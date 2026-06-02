@@ -112,6 +112,7 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: dist/
+          skip-existing: true
 
   # --------------------------------------------------------------------- #
   # Publish to PyPI proper. Gated on the testpypi job to keep the         #
@@ -139,3 +140,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          skip-existing: true
