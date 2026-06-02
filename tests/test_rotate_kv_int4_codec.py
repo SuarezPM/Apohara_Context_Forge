@@ -1,6 +1,6 @@
 """Tests for the INT4 pack/unpack codec in RotateKVQuantizer — AUDIT #9.
 
-Sprint 2 audit found the write side (`_quantize_block`) and the read side
+The V7 codec audit found the write side (`_quantize_block`) and the read side
 (`_dequantize_block`) disagreed on the packing layout: the read side reads
 both nibbles of a byte as adjacent head_dim slots (2*d, 2*d+1), but the
 write side only ever wrote one head_dim slot per byte and packed adjacent

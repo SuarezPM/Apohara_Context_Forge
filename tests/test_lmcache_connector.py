@@ -79,7 +79,7 @@ class _FakeEngine:
 
 class TestBackendDetection:
     """Verify the ``backend`` property reports the import strategy that
-    was actually used. This is the Sprint 5 deployment-readiness check:
+    was actually used. This is the MI300X deployment-readiness check:
     a multi-node MI300X cluster expects ``"non_cuda"`` (the v1 path),
     never ``"cuda"``.
     """

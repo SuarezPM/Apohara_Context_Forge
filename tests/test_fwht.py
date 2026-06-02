@@ -1,4 +1,4 @@
-"""Tests for Fast Walsh-Hadamard Transform — V7 Sprint 1 Track 1."""
+"""Tests for Fast Walsh-Hadamard Transform — V7 codec work."""
 import numpy as np
 import pytest
 import torch

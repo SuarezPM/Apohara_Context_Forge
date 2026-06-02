@@ -800,7 +800,7 @@ KV-sharing relevance on sparse/linear frontier models.
 **The naming collision.** We shipped the plugin under the name **ATOM**
 (*Anchor-driven Tensor Orchestration for Multi-agent*). AMD's official ROCm
 team ships an engine literally called **ATOM** (*AiTer Optimized Model*,
-[ROCm/ATOM](https://github.com/ROCm)) in **the same domain** — a vLLM
+[ROCm/ATOM](https://github.com/ROCm/ATOM)) in **the same domain** — a vLLM
 acceleration path for the MI300X. Two "ATOM" plugins for vLLM-on-MI300X is a
 recipe for confusion and an implicit (false) association with AMD's project.
 Honesty extends to naming: we do not squat a name an upstream vendor already
@@ -838,6 +838,20 @@ have registered an entry point vLLM never walks. Fixed:
 - **Status: 🟢 RESOLVED** — name no longer collides with AMD's ATOM engine; the
   in-tree entry point now targets a real vLLM plugin group.
 
+**Follow-up (2026-06-02, PyPI prep).** `apohara_context_forge/pyproject.toml`
+was **removed entirely**, so the "entry-point fix" above is now moot. On a
+closer look that fix was cosmetic: the inner manifest was an orphan. Its
+distribution name `contextforge` is already taken on PyPI by an unrelated
+project; its declared target `contextforge.serving.romy_plugin` does **not**
+resolve (the in-tree package is `apohara_context_forge` — there is no
+top-level `contextforge` module), so the entry point would have failed to
+load even with the correct group; and its MIT license contradicted the
+repo's Apache-2.0. The package was never pip-installed (tests run via
+`PYTHONPATH=.`), so the broken entry point was never actually walked. The
+real, working vLLM entry point lives in the `pypi/apohara-vllm-plugin` shim
+(`apohara_contextforge = "apohara_vllm_plugin:register"`), which is now the
+single source of truth. Net: the in-tree entry point is **gone, not fixed**.
+
 ---
 
-*Last updated: 2026-05-31 · maintained by the same person who wrote the lies.*
+*Last updated: 2026-06-02 · maintained by the same person who wrote the lies.*

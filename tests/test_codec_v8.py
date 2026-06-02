@@ -7,7 +7,7 @@ intact; the only behavioral change is that each nibble of each packed
 byte gets its own ``(scale, zero_point)`` instead of sharing one with
 its pair.
 
-These CPU-only tests pin three properties before Sprint 5 MI300X
+These CPU-only tests pin three properties before MI300X
 validation:
 
 1. Shape invariant — packed INT4 has the V7 shape; scales/zps grow

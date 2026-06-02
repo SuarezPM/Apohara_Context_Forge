@@ -1,6 +1,6 @@
 # V8 Codec Design — Per-Nibble Independent Scales
 
-> **Status:** design draft, CPU-only prep for Sprint 5 MI300X validation.
+> **Status:** design draft, CPU-only prep for MI300X validation.
 > Paper v2.0.1 §limitations identifies this as future work; this document
 > formalizes the math, expected reduction, validation plan, and the
 > exact metric thresholds for shipping V8 in the paper v2.1 codec table.
@@ -95,7 +95,7 @@ are highly asymmetric (sink tokens, outlier channels) V8 reclaims most
 of the gap. If pairs are nearly symmetric (deep-layer activations
 after RoPE) V8 reclaims less.
 
-The MI300X validation in Sprint 5 will measure the actual point along
+The MI300X validation will measure the actual point along
 the 3.85-3.97× interval. The paper v2.1 §codec section then ships
 **measured** numbers, not projections — consistent with V6.1 honesty
 discipline.
@@ -104,7 +104,7 @@ discipline.
 
 ## Implementation plan
 
-### Phase 1 — CPU skeleton (this Sprint, no GPU needed)
+### Phase 1 — CPU skeleton (no GPU needed)
 
 File: `apohara_context_forge/quantization/codec_v8.py`
 
@@ -140,10 +140,10 @@ class CodecV8Quantizer(RotateKVQuantizer):
         # Then scales / zero_points have shape (n_blocks, num_heads,
         # packed_head_dim, 2) instead of (n_blocks, num_heads, packed_head_dim).
         # Pack lower and upper nibbles using their own scale/zp.
-        raise NotImplementedError("Sprint 5 implementation slot")
+        raise NotImplementedError("V8 codec implementation slot")
 ```
 
-### Phase 2 — CPU unit tests (this Sprint, no GPU needed)
+### Phase 2 — CPU unit tests (no GPU needed)
 
 File: `tests/quantization/test_codec_v8.py`
 
@@ -158,7 +158,7 @@ Three minimum tests:
    V8 should degenerate to V7 behavior when nibble pairs share dynamic
    range exactly).
 
-### Phase 3 — MI300X validation (Sprint 5, on droplet)
+### Phase 3 — MI300X validation (on droplet)
 
 Reference: `scripts/capture_kv_snapshots.py` (standalone runner removed in cleanup)
 
@@ -186,7 +186,7 @@ Pareto):
 | V7 + FWHT     |  3.55×   | 2.0e0   | 1.9e0     |       6%   |
 | **V8 per-nibble independent** | **3.85-3.97×** (TBD) | **<5.0e-3** (TBD) | **<5.0e-3** (TBD) | 12% |
 
-The V8 row stays bracketed `(TBD)` until Sprint 5 validation lands.
+The V8 row stays bracketed `(TBD)` until the MI300X validation lands.
 This is the V6.1 honesty discipline applied to V8: no number on the
 table without a raw JSON log behind it.
 
@@ -222,11 +222,11 @@ in V7.0.0-alpha.5 (200× MSE degradation → set default `use_fwht=False`).
   FP16 storage; this is V9+ work.
 - **GPU kernel co-design**: V8 increases scale/zp memory traffic by 2×.
   On MI300X HBM3 (3.73 TB/s measured), this is bandwidth-noise; on
-  bandwidth-constrained CPUs, it would matter. Sprint 5 measurement
+  bandwidth-constrained CPUs, it would matter. The MI300X measurement
   will confirm the MI300X-side bandwidth story.
 - **vLLM integration path**: the vLLM plugin currently calls
   `RotateKVQuantizer` — switching to `CodecV8Quantizer` is a single-line
-  change in the plugin (Phase 4 of Sprint 5 if budget allows).
+  change in the plugin (Phase 4 of the MI300X validation if budget allows).
 
 ---
 

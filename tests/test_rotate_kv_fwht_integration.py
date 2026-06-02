@@ -1,4 +1,4 @@
-"""Integration tests for FWHT wired into RotateKVQuantizer — V7 Sprint 2 Track 2."""
+"""Integration tests for FWHT wired into RotateKVQuantizer — V7 codec work."""
 import numpy as np
 import pytest
 
