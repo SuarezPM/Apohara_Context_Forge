@@ -2,15 +2,37 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[project.scripts]
-apohara = "apohara_context_forge.main:main"
-
 [project]
 name = "apohara-context-forge"
 version = "6.2.0"
 description = "APOHARA: Context Forge — Silicon-native KV cache coordination for multi-agent LLM pipelines on AMD Instinct MI300X. Now ships with a slim safety-only install path."
+readme = "README.md"
 requires-python = ">=3.11,<3.15"
 license = {text = "Apache-2.0"}
+authors = [
+  { name = "Pablo M. Suarez", email = "suarezpm@csnat.unt.edu.ar" },
+]
+maintainers = [
+  { name = "Pablo M. Suarez", email = "suarezpm@csnat.unt.edu.ar" },
+]
+keywords = [
+  "llm", "kv-cache", "multi-agent", "context-compression",
+  "amd", "rocm", "mi300x", "vllm", "safety", "inv-15", "jcr",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: System :: Distributed Computing",
+]
 # Slim deps — the safety kernel + minimal API surface.
 # Heavy deps (torch, vllm, faiss, sentence-transformers, gradio, plotly,
 # llmlingua) moved to the [serve] extra per the apohara-probanza Phase 3 PR.
@@ -57,6 +79,15 @@ dev = [
 verify = [
   "z3-solver>=4.12",
 ]
+
+[project.urls]
+Homepage      = "https://github.com/SuarezPM/Apohara_Context_Forge"
+Repository    = "https://github.com/SuarezPM/Apohara_Context_Forge"
+Documentation = "https://github.com/SuarezPM/Apohara_Context_Forge#readme"
+Changelog     = "https://github.com/SuarezPM/Apohara_Context_Forge/blob/main/CHANGELOG.md"
+Audit         = "https://github.com/SuarezPM/Apohara_Context_Forge/blob/main/AUDIT.md"
+Paper         = "https://doi.org/10.5281/zenodo.20412807"
+Issues        = "https://github.com/SuarezPM/Apohara_Context_Forge/issues"
 
 [tool.setuptools.packages.find]
 include = ["apohara_context_forge*", "agents*", "demo*"]
