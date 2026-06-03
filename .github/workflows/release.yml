@@ -122,9 +122,16 @@ jobs:
   pypi:
     name: publish → PyPI
     needs: [build, testpypi]
-    if: |
-      startsWith(github.ref, 'refs/tags/context-forge-v') ||
-      (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    # A skipped `needs` job would skip this one too, unless the condition uses
+    # a status function. `!cancelled()` makes the job eligible; the explicit
+    # result checks then let target=pypi (testpypi skipped) through while still
+    # blocking on a real build/testpypi failure.
+    if: >-
+      !cancelled()
+      && needs.build.result == 'success'
+      && needs.testpypi.result != 'failure'
+      && ( startsWith(github.ref, 'refs/tags/context-forge-v')
+      || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi') )
     runs-on: ubuntu-latest
     environment:
       name: pypi
