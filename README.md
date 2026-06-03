@@ -17,7 +17,7 @@
 </p>
 <p align="center">
   <a href="https://pypi.org/project/apohara-context-forge/"><img src="https://img.shields.io/pypi/v/apohara-context-forge?style=flat-square&logo=pypi&logoColor=white&label=PyPI&labelColor=0D1117&color=39D353" alt="PyPI version"></a>
-  <a href="#-verification"><img src="https://img.shields.io/badge/tests-487%20passed-39D353?style=flat-square&labelColor=0D1117" alt="487 tests"></a>
+  <a href="#-verification"><img src="https://img.shields.io/badge/tests-496%20passed-39D353?style=flat-square&labelColor=0D1117" alt="496 tests"></a>
   <a href="AUDIT.md"><img src="https://img.shields.io/badge/we%20publish%20our%20own-audit-FF8A00?style=flat-square&labelColor=0D1117" alt="Public audit"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-39D353?style=flat-square&labelColor=0D1117" alt="License Apache 2.0"></a>
 </p>
@@ -152,10 +152,16 @@ We refuse to claim a paper's number as our own. Each mechanism is graded by **wh
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/SuarezPM/Apohara_Context_Forge.git
-cd Apohara_Context_Forge && pip install -e .        # or: uv sync
+# From PyPI — slim core (safety kernel + INV-15 gate; no torch/vllm):
+pip install apohara-context-forge
+# …or the full serving stack (vLLM, embeddings, Gradio demo):
+pip install apohara-context-forge[serve]
 
-PYTHONPATH=. pytest tests/ -q                        # 487 passed · 25 skipped
+# …or from source (development):
+git clone https://github.com/SuarezPM/Apohara_Context_Forge.git
+cd Apohara_Context_Forge && pip install -e '.[dev]'  # or: uv sync
+
+PYTHONPATH=. pytest tests/ -q                        # 496 passed · 25 skipped
 
 # Machine-check the INV-15 safety invariant (Z3):
 python -m apohara_context_forge.safety.z3_inv15_proof
@@ -194,7 +200,7 @@ Most AI repos inflate. We do the opposite — on purpose, because trust is the p
 
 | Check | Result |
 |---|---|
-| `PYTHONPATH=. pytest tests/` | **487 passed · 25 skipped · 0 failed** |
+| `PYTHONPATH=. pytest tests/` | **496 passed · 25 skipped · 0 failed** |
 | `z3_inv15_proof` | **PROVED** (`unsat` on negation) |
 | `ledger_cli verify` (intact / tampered) | exit **0** / **2** |
 | Honesty CI guard | **PASS** |
