@@ -29,6 +29,7 @@ Two invariants this module owns:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 # vLLM PagedAttention block size (tokens). Mirrors VLLM_BLOCK_SIZE in
 # the dedup/registry modules; LMCache chunk_size MUST equal this.
@@ -132,3 +133,61 @@ def build_vllm_serve_args(
         "--kv-transfer-config",
         build_kv_transfer_config_json(block_size, chunk_size),
     ]
+
+
+def build_lmcache_config_yaml(
+    *,
+    remote_url: str,
+    chunk_size: int = DEFAULT_BLOCK_SIZE,
+    remote_serde: str = "naive",
+    local_cpu: bool = False,
+    max_local_cpu_size: float = 2.0,
+) -> str:
+    """Return the LMCache config-file body that points a worker at a shared store.
+
+    This is the YAML ``remote_url`` form PROVEN in ``local_cross_worker_smoke.py``'s
+    cross-process reuse result — NOT the ``LMCACHE_REDIS_URL`` env (which the smoke
+    run did not validate). ``chunk_size`` MUST equal vLLM's ``--block-size`` so the
+    LMCache chunk boundaries line up with PagedAttention block boundaries (same
+    invariant :func:`build_kv_transfer_config` enforces); ``local_cpu: false`` makes
+    worker-2 start with an EMPTY local cache so a hit can only come from the remote.
+
+    Pure: returns the string; it does not touch the filesystem. The caller decides
+    where to write it (see :func:`write_lmcache_config`).
+    """
+    return (
+        f"chunk_size: {chunk_size}\n"
+        f"local_cpu: {str(local_cpu).lower()}\n"
+        f"max_local_cpu_size: {max_local_cpu_size}\n"
+        f'remote_url: "{remote_url}"\n'
+        f'remote_serde: "{remote_serde}"\n'
+    )
+
+
+def write_lmcache_config(
+    out_path: str,
+    *,
+    remote_url: str,
+    chunk_size: int = DEFAULT_BLOCK_SIZE,
+    remote_serde: str = "naive",
+    local_cpu: bool = False,
+    max_local_cpu_size: float = 2.0,
+) -> str:
+    """Write the LMCache config-file body (:func:`build_lmcache_config_yaml`) to
+    ``out_path`` and return that path.
+
+    Parameterized on the output path so callers (the cross-worker harness, the smoke
+    script) pick the location — NO ``/tmp`` hardcode here. The caller sets
+    ``LMCACHE_CONFIG_FILE`` to the returned path in the worker env.
+    """
+    body = build_lmcache_config_yaml(
+        remote_url=remote_url,
+        chunk_size=chunk_size,
+        remote_serde=remote_serde,
+        local_cpu=local_cpu,
+        max_local_cpu_size=max_local_cpu_size,
+    )
+    p = Path(out_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(body)
+    return str(p)

@@ -545,7 +545,11 @@ def main(argv: list[str] | None = None) -> int:
 **Server lifecycle rule:** A, B, C single-worker run **sequentially** on one card (launch →
 measure → teardown), exactly like the squeeze runner, so HBM readings are not cross-contaminated.
 Cross-worker B uses the sequential store→retrieve pattern of `local_cross_worker_smoke.py`
-(worker-1 stores to Redis, dies; worker-2 retrieves), with an APC-only A/C cross baseline.
+(worker-1 stores to Redis, dies; worker-2 retrieves), with an APC-only A/C cross baseline. The
+real 2-worker path is `scripts/gate0/cross_worker.py::run_gate_cross_worker_real` (dispatched by
+`harness.run_gate` for `topology=cross_worker`, both `dry` and `live`); it measures
+`external_hits_delta`/`external_kv_tokens_delta` on the COLD worker-2 and folds them into the §9
+log, with the two cross-only required validity gates `w2_cold_read` + `cross_negative_control`.
 
 ---
 

@@ -88,6 +88,17 @@ DEFAULT_C_MAX_HIT_RATE = 0.05
 # it). Single-worker treats it as recommended, not required.
 _CROSS_TOPOLOGY = "cross_worker"
 
+# Cross-worker arm B: a cold worker-2 that genuinely retrieves from Redis shows external KV
+# hits while its LOCAL prefix-cache hit_rate stays low (the local cache was empty at start).
+# Above this local-hit ceiling the "cold" worker was actually warm and the external signal is
+# not attributable to a cross-process retrieve.
+DEFAULT_W2_MAX_LOCAL_HIT_RATE = 0.30
+
+# Cross-worker arm A (APC-only, no LMCache): a cold worker-2 has NO shared store to read, so
+# its external hits must be ~0. Above this the external counter is leaking from something other
+# than LMCache, so a positive B external delta would be uninterpretable.
+DEFAULT_A_MAX_EXTERNAL_HITS = 0.0
+
 
 def _aiter_parity_keys() -> tuple[str, ...]:
     """The env keys that MUST match across arms for an honest delta.
@@ -411,6 +422,179 @@ def check_c_control(prefix_metrics_c: "PrefixMetrics", *, max_hit_rate: float = 
     )
 
 
+def check_w2_cold_read(
+    prefix_metrics_b: "PrefixMetrics",
+    *,
+    max_local_hit_rate: float = DEFAULT_W2_MAX_LOCAL_HIT_RATE,
+) -> ValidityCheck:
+    """Cross-worker arm B proof: the COLD worker-2 genuinely RETRIEVED prefix KV from the
+    shared Redis/LMCache store that worker-1 stored — not from its own (empty) local cache.
+
+    The signature of a real cold cross-process read is: ``external_hits_delta > 0`` (LMCache
+    served prefix chunks) WHILE the LOCAL ``hit_rate`` stays low (the local prefix cache was
+    empty when worker-2 started, so native APC could not have produced the hits). If the local
+    hit_rate were high, worker-2 was effectively warm and the external signal would not be
+    attributable to a cross-worker retrieve.
+
+    ``required=True`` (only wired in by ``run_all`` when ``topology == cross_worker``).
+    ``passed`` iff external_hits_delta > 0 AND hit_rate <= max_local_hit_rate. A missing metric
+    or an upstream /metrics error fails LOUD — we cannot certify the cross-worker reuse."""
+    name = "w2_cold_read"
+    if prefix_metrics_b is None:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                "arm B (cross) prefix metrics missing: cannot certify the cold worker-2 read "
+                "from Redis. Run the two-worker sequence and pass worker-2's PrefixMetrics."
+            ),
+            evidence={"external_hits_delta": None, "hit_rate": None, "found": False},
+        )
+
+    err = getattr(prefix_metrics_b, "error", None)
+    if err:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                f"arm B (cross) /metrics read errored ({err!r}): cannot certify the cold "
+                "worker-2 retrieve. Fix the /metrics endpoint and re-run the two-worker sequence."
+            ),
+            evidence={"external_hits_delta": None, "hit_rate": None, "error": str(err)},
+        )
+
+    external_hits = getattr(prefix_metrics_b, "external_hits_delta", None)
+    external_kv_tokens = getattr(prefix_metrics_b, "external_kv_tokens_delta", None)
+    local_hit_rate = getattr(prefix_metrics_b, "hit_rate", None)
+    evidence = {
+        "external_hits_delta": external_hits,
+        "external_kv_tokens_delta": external_kv_tokens,
+        "local_hit_rate": local_hit_rate,
+        "max_local_hit_rate": max_local_hit_rate,
+    }
+    if external_hits is None or local_hit_rate is None:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                "arm B (cross) external_hits_delta / hit_rate is None: PrefixMetrics did not "
+                "produce the cross-worker counters. Cannot certify the cold read."
+            ),
+            evidence=evidence,
+        )
+    if external_hits <= 0:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                f"arm B (cross) external_hits_delta={external_hits} <= 0: the cold worker-2 did "
+                "NOT retrieve any prefix KV from Redis. Either worker-1 never stored (check its "
+                "LMCache log), the salts did not collide cross-worker (PYTHONHASHSEED), or the "
+                "remote_serde/remote_url is wrong. No cross-worker reuse to measure."
+            ),
+            evidence=evidence,
+        )
+    if local_hit_rate > max_local_hit_rate:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                f"arm B (cross) worker-2 LOCAL hit_rate={local_hit_rate} > {max_local_hit_rate}: "
+                "the 'cold' worker-2 served prefixes from its OWN local APC, so the external hits "
+                "are not attributable to a cross-process retrieve. Ensure LMCache local_cpu:false "
+                "(empty local cache) and that worker-2 truly starts cold."
+            ),
+            evidence=evidence,
+        )
+    return _passed(
+        name,
+        required=True,
+        detail=(
+            f"arm B (cross) cold read proven: external_hits_delta={external_hits} > 0 while "
+            f"local hit_rate={local_hit_rate} <= {max_local_hit_rate} — worker-2 retrieved "
+            "prefix KV from Redis, not from its own cache."
+        ),
+        evidence=evidence,
+    )
+
+
+def check_cross_negative_control(
+    prefix_metrics_a: "PrefixMetrics",
+    *,
+    max_external_hits: float = DEFAULT_A_MAX_EXTERNAL_HITS,
+) -> ValidityCheck:
+    """Cross-worker arm A (APC-only, NO LMCache) negative control: a cold worker-2 has no
+    shared store to read from, so ``external_hits_delta`` must be ~0. This is what makes the
+    external hits in arm B ATTRIBUTABLE to LMCache cross-worker offload rather than to some
+    native vLLM path that would also show external counters.
+
+    ``required=True`` (wired in by ``run_all`` only when ``topology == cross_worker``).
+    ``passed`` iff external_hits_delta <= max_external_hits. A missing metric or /metrics error
+    fails LOUD — without a clean A baseline a positive B external delta is uninterpretable."""
+    name = "cross_negative_control"
+    if prefix_metrics_a is None:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                "arm A (cross) prefix metrics missing: cannot certify the APC-only cross "
+                "baseline. Run arm A's two-worker sequence and pass worker-2's PrefixMetrics."
+            ),
+            evidence={"external_hits_delta": None, "max_external_hits": max_external_hits, "found": False},
+        )
+
+    err = getattr(prefix_metrics_a, "error", None)
+    if err:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                f"arm A (cross) /metrics read errored ({err!r}): cannot certify the APC-only "
+                "cross baseline. Fix the /metrics endpoint and re-run arm A."
+            ),
+            evidence={"external_hits_delta": None, "max_external_hits": max_external_hits, "error": str(err)},
+        )
+
+    external_hits = getattr(prefix_metrics_a, "external_hits_delta", None)
+    evidence = {
+        "external_hits_delta": external_hits,
+        "external_kv_tokens_delta": getattr(prefix_metrics_a, "external_kv_tokens_delta", None),
+        "max_external_hits": max_external_hits,
+    }
+    if external_hits is None:
+        return _failed(
+            name,
+            required=True,
+            detail=(
+                "arm A (cross) external_hits_delta is None: PrefixMetrics did not produce the "
+                "external counter. Cannot certify the APC-only cross baseline."
+            ),
+            evidence=evidence,
+        )
+    if external_hits <= max_external_hits:
+        return _passed(
+            name,
+            required=True,
+            detail=(
+                f"arm A (cross) external_hits_delta={external_hits} <= {max_external_hits} — "
+                "APC-only cross baseline shows no external hits; B's external hits are "
+                "attributable to LMCache."
+            ),
+            evidence=evidence,
+        )
+    return _failed(
+        name,
+        required=True,
+        detail=(
+            f"arm A (cross) external_hits_delta={external_hits} > {max_external_hits}: the "
+            "APC-only baseline (NO --kv-transfer-config) is showing external hits, so a positive "
+            "B external delta would NOT be attributable to LMCache. Verify arm A carries no "
+            "LMCache config and no kv-transfer-config."
+        ),
+        evidence=evidence,
+    )
+
+
 def check_shared_prefix_single(reuse: "ReuseStats") -> ValidityCheck:
     """The workload's prefix (excluding tails) must collapse to exactly ONE distinct prefix.
     If ``reuse.n_distinct_prefixes > 1`` the requests do not actually share a byte-identical
@@ -559,6 +743,9 @@ def run_all(
     hbm: "HBMReading" | None = None,
     min_requests: int = DEFAULT_MIN_REQUESTS,
     c_max_hit_rate: float = DEFAULT_C_MAX_HIT_RATE,
+    topology: str | None = None,
+    prefix_metrics_a: "PrefixMetrics" | None = None,
+    prefix_metrics_b: "PrefixMetrics" | None = None,
 ) -> ValidityReport:
     """Run every applicable check and fold into a :class:`ValidityReport`.
 
@@ -567,10 +754,16 @@ def run_all(
     Checks whose inputs are absent are SKIPPED with an explicit, non-passing note rather than
     silently dropped — the operator sees what could not be verified.
 
+    When ``topology == cross_worker`` two extra REQUIRED checks fire (the real two-worker path,
+    :mod:`scripts.gate0.cross_worker`): :func:`check_w2_cold_read` (B's cold worker-2 retrieved
+    from Redis) and :func:`check_cross_negative_control` (A's APC-only baseline shows no external
+    hits). They are skipped entirely for single-worker, where there is no second worker.
+
     ``quotable`` is ``all(required -> passed)`` over the checks that actually ran. A required
     check that was skipped (its input missing) appears as a failed (not passed) entry, so a
     run missing a required input is correctly NOT quotable."""
     checks: list[ValidityCheck] = []
+    is_cross = topology == _CROSS_TOPOLOGY
 
     # (a) APC ON — one check per supplied server log.
     if apc_log_paths:
@@ -612,6 +805,32 @@ def run_all(
                 evidence={"hit_rate": None, "found": False},
             )
         )
+
+    # Cross-worker only: the two REQUIRED checks that make the real two-worker store->retrieve
+    # path quotable. Single-worker has no second worker, so these are not evaluated there.
+    if is_cross:
+        if prefix_metrics_b is not None:
+            checks.append(check_w2_cold_read(prefix_metrics_b))
+        else:
+            checks.append(
+                _failed(
+                    "w2_cold_read",
+                    required=True,
+                    detail="arm B (cross) prefix metrics not supplied: cold worker-2 read could not be verified.",
+                    evidence={"external_hits_delta": None, "found": False},
+                )
+            )
+        if prefix_metrics_a is not None:
+            checks.append(check_cross_negative_control(prefix_metrics_a))
+        else:
+            checks.append(
+                _failed(
+                    "cross_negative_control",
+                    required=True,
+                    detail="arm A (cross) prefix metrics not supplied: APC-only cross baseline could not be verified.",
+                    evidence={"external_hits_delta": None, "found": False},
+                )
+            )
 
     # (c) N sufficient.
     checks.append(check_n_requests(spec, min_requests=min_requests))
@@ -696,6 +915,29 @@ def _self_check() -> int:  # pragma: no cover — diagnostic harness, not the ga
     expect(not check_c_control(pm_hot).passed, "check_c_control hitting -> failed")
     expect(not check_c_control(pm_vacuous).passed, "check_c_control no-queries -> failed")
 
+    # Cross-worker w2 cold read: external hits with low local hit_rate passes; no external
+    # hits fails; external hits but a HOT local cache fails (worker-2 wasn't really cold).
+    pm_b_cold = SimpleNamespace(
+        external_hits_delta=240.0, external_kv_tokens_delta=15360.0, hit_rate=0.05, error=None
+    )
+    pm_b_no_ext = SimpleNamespace(
+        external_hits_delta=0.0, external_kv_tokens_delta=0.0, hit_rate=0.02, error=None
+    )
+    pm_b_warm = SimpleNamespace(
+        external_hits_delta=240.0, external_kv_tokens_delta=15360.0, hit_rate=0.85, error=None
+    )
+    expect(check_w2_cold_read(pm_b_cold).passed, "check_w2_cold_read external+cold -> passed")
+    expect(not check_w2_cold_read(pm_b_no_ext).passed, "check_w2_cold_read no external -> failed")
+    expect(not check_w2_cold_read(pm_b_warm).passed, "check_w2_cold_read warm local -> failed")
+    expect(not check_w2_cold_read(None).passed, "check_w2_cold_read missing -> failed")
+
+    # Cross negative control (arm A, APC-only): no external hits passes; any external hits fails.
+    pm_a_clean = SimpleNamespace(external_hits_delta=0.0, external_kv_tokens_delta=0.0, error=None)
+    pm_a_leak = SimpleNamespace(external_hits_delta=12.0, external_kv_tokens_delta=192.0, error=None)
+    expect(check_cross_negative_control(pm_a_clean).passed, "check_cross_negative_control 0 ext -> passed")
+    expect(not check_cross_negative_control(pm_a_leak).passed, "check_cross_negative_control leak -> failed")
+    expect(not check_cross_negative_control(None).passed, "check_cross_negative_control missing -> failed")
+
     # Shared prefix single.
     expect(check_shared_prefix_single(SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
                                                        shared_prefix_fraction=1.0, n_requests=320)).passed,
@@ -737,6 +979,47 @@ def _self_check() -> int:  # pragma: no cover — diagnostic harness, not the ga
         hbm=None,
     )
     expect(not report_bad.quotable, f"run_all missing-C -> NOT quotable ({report_bad.summary})")
+
+    # Fold (cross-worker): a clean two-worker run is quotable; the two cross-only required
+    # checks (w2_cold_read, cross_negative_control) appear and pass.
+    arm_a_x = SimpleNamespace(arm="A", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True)
+    arm_b_x = SimpleNamespace(arm="B", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True)
+    arm_c_x = SimpleNamespace(arm="C", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True)
+    report_x = run_all(
+        arm_launches=[arm_a_x, arm_b_x, arm_c_x],
+        reuse=SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
+                              shared_prefix_fraction=1.0, n_requests=320),
+        spec=SimpleNamespace(n_requests=320),
+        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
+        prefix_metrics_c=pm_clean,
+        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
+        topology="cross_worker",
+        prefix_metrics_a=pm_a_clean,
+        prefix_metrics_b=pm_b_cold,
+    )
+    cross_names = {c.name for c in report_x.checks}
+    expect("w2_cold_read" in cross_names, "run_all cross -> w2_cold_read present")
+    expect("cross_negative_control" in cross_names, "run_all cross -> cross_negative_control present")
+    expect(report_x.quotable, f"run_all cross clean -> quotable ({report_x.summary})")
+    # Fold (cross-worker): a run where B did not cold-read (no external hits) is NOT quotable.
+    report_x_bad = run_all(
+        arm_launches=[arm_a_x, arm_b_x, arm_c_x],
+        reuse=SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
+                              shared_prefix_fraction=1.0, n_requests=320),
+        spec=SimpleNamespace(n_requests=320),
+        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
+        prefix_metrics_c=pm_clean,
+        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
+        topology="cross_worker",
+        prefix_metrics_a=pm_a_clean,
+        prefix_metrics_b=pm_b_no_ext,
+    )
+    expect(not report_x_bad.quotable, f"run_all cross no-cold-read -> NOT quotable ({report_x_bad.summary})")
+    # Single-worker must NOT emit the cross-only checks.
+    expect(
+        not any(c.name in {"w2_cold_read", "cross_negative_control"} for c in report.checks),
+        "run_all single -> no cross-only checks",
+    )
 
     Path(path_true).unlink(missing_ok=True)
     Path(path_false).unlink(missing_ok=True)

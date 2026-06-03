@@ -82,18 +82,16 @@ def vllm_bin() -> str:
 
 
 def write_lmcache_config() -> str:
-    """Write a local LMCache config pointing at the local Redis. Returns path."""
-    cfg = (
-        f"chunk_size: {BLOCK_SIZE}\n"
-        "local_cpu: false\n"
-        "max_local_cpu_size: 2.0\n"
-        f'remote_url: "{REDIS_URL}"\n'
-        'remote_serde: "naive"\n'
-    )
-    p = Path("/tmp/lmcache_local.yaml")
-    p.write_text(cfg)
-    log(f"wrote {p}:\n{cfg.strip()}")
-    return str(p)
+    """Write a local LMCache config pointing at the local Redis. Returns path.
+
+    Delegates to the shared, parameterized writer in ``vllm_launch_config`` so the
+    smoke and the GATE #0 cross-worker harness emit byte-identical config files.
+    """
+    from apohara_context_forge.serving.vllm_launch_config import write_lmcache_config as _write
+
+    p = _write("/tmp/lmcache_local.yaml", remote_url=REDIS_URL, chunk_size=BLOCK_SIZE)
+    log(f"wrote {p}:\n{Path(p).read_text().strip()}")
+    return p
 
 
 def server_args(port: int) -> list[str]:

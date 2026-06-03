@@ -45,10 +45,9 @@ import json
 import subprocess
 import sys
 import time
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 # CONTRACT §1: REPO on sys.path so apohara_context_forge.*, agents.*, scripts.* import
 # the same way the existing probes do, and so the sibling gate0 modules resolve.
@@ -76,6 +75,21 @@ from scripts.gate0.metrics import (  # noqa: E402
     PrefixMetrics,
     ThroughputSample,
 )
+from scripts.gate0 import _lifecycle  # noqa: E402
+from scripts.gate0._lifecycle import (  # noqa: E402
+    HEALTH_POLL_S,
+    HEALTH_TIMEOUT_S,
+    SETTLE_S,
+    TEARDOWN_TIMEOUT_S,
+    default_ports as _default_ports,
+    endpoint as _endpoint,
+    launch_server as _launch_server,
+    log as _log,
+    post as _post,
+    teardown as _teardown,
+    vllm_bin as _vllm_bin,
+    wait_health as _wait_health,
+)
 from scripts.gate0 import validity as validity_mod  # noqa: E402
 from scripts.gate0.workload import (  # noqa: E402
     ReuseStats,
@@ -93,15 +107,10 @@ try:
 except Exception:  # pragma: no cover - defensive; the contract guarantees it exists
     DEFAULT_BLOCK_SIZE = 16
 
-# Health-wait / sampling knobs (operator overridable via env; never affect numbers).
-HEALTH_TIMEOUT_S = 900.0       # vLLM load of a 32B dense model is large
-HEALTH_POLL_S = 5.0
-SETTLE_S = 2.0                 # let HBM settle after warmup / before sampling
-TEARDOWN_TIMEOUT_S = 60.0
-
-
-def _log(msg: str) -> None:
-    print(f"[gate0] {msg}", flush=True)
+# Server lifecycle (launch / health-wait / teardown / _post / _endpoint / _vllm_bin /
+# _default_ports) + the health/settle knobs live in scripts.gate0._lifecycle, shared
+# verbatim with cross_worker.py so neither runner duplicates the subprocess plumbing.
+# They are imported above under the same private names this module has always exported.
 
 
 # --------------------------------------------------------------------------- #
@@ -141,117 +150,6 @@ class GateRunResult:
 
     def to_dict(self) -> dict:
         return _result_to_dict(self)
-
-
-# --------------------------------------------------------------------------- #
-# HTTP — same shape as mi300x_measure._post, injected into the metrics readers so
-# those stay vLLM-import-free (they never construct a request body themselves).
-# --------------------------------------------------------------------------- #
-def _post(endpoint, model, prompt, *, salt=None, max_tokens=16, stream=False):
-    """POST one completion. Mirrors scripts.mi300x_measure._post byte-for-byte so the
-    metrics readers can drive traffic without importing vLLM or knowing the wire format."""
-    body = {"model": model, "prompt": prompt, "max_tokens": max_tokens, "temperature": 0.0}
-    if salt is not None:
-        body["cache_salt"] = salt
-    if stream:
-        body["stream"] = True
-    req = urllib.request.Request(
-        f"{endpoint}/v1/completions",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    return urllib.request.urlopen(req, timeout=180)
-
-
-# --------------------------------------------------------------------------- #
-# Live server lifecycle — subprocess vllm, health-wait, teardown. Pattern lifted
-# from mi300x_squeeze_all.run_model + local_cross_worker_smoke.{start_worker,wait_ready}.
-# vLLM is launched as a CLI subprocess; it is NEVER imported here.
-# --------------------------------------------------------------------------- #
-def _vllm_bin(explicit: Optional[str]) -> str:
-    """Resolve the vllm launcher: explicit > venv-local > PATH (smoke-script pattern).
-
-    IMPORTANT (deployment): the planned MI300X setup runs vLLM INSIDE the ``rocm/vllm``
-    container (ROCm + AITER prebuilt), NOT on the host — there is no host ``vllm`` on PATH.
-    The launcher only ever invokes ``[<bin>, "serve", <model>, ...]`` (see ``_launch_server``),
-    so the operator MUST pass ``--vllm-bin`` pointing at a launcher that forwards
-    ``serve ...`` into the container (a tiny ``docker run --network host ... rocm/vllm vllm``
-    wrapper that appends its args). Without it, a bare host without vLLM raises
-    FileNotFoundError -> ``_wait_health`` returns False -> the arm is recorded UNMEASURED while
-    the GPU still bills. ``--mode dry`` never reaches this path, so this surfaces ONLY live;
-    the runbook ships the wrapper (§2.2) and pins ``--vllm-bin`` on every live command (§3).
-    """
-    if explicit:
-        return explicit
-    cand = Path(sys.executable).parent / "vllm"
-    return str(cand) if cand.exists() else "vllm"
-
-
-def _launch_server(
-    launch: ArmLaunch,
-    *,
-    vllm_bin: str,
-    log_path: str,
-    extra_env: Optional[dict[str, str]] = None,
-) -> tuple[subprocess.Popen, str]:
-    """Start one vLLM server for an arm. Returns (process, log_path).
-
-    ``launch.serve_args`` already starts with ``["serve", model, ...]`` (arms.py owns
-    the exact arg list); we prepend the resolved ``vllm`` binary. ``launch.env`` carries
-    the AITER vars + PYTHONHASHSEED=0 (+ LMCache worker_env for cross-worker B); we apply
-    it on top of the inherited environment so HF cache / ROCm device vars survive.
-    """
-    import os
-
-    args = [vllm_bin, *launch.serve_args]
-    env = os.environ.copy()
-    env.update(launch.env)
-    if extra_env:
-        env.update(extra_env)
-    _log(f"launch arm {launch.arm}/{launch.topology}: {' '.join(args)}")
-    lf = open(log_path, "w")
-    proc = subprocess.Popen(args, env=env, stdout=lf, stderr=subprocess.STDOUT)
-    return proc, log_path
-
-
-def _wait_health(proc: subprocess.Popen, endpoint: str, *, timeout_s: float = HEALTH_TIMEOUT_S) -> bool:
-    """Poll ``/health`` until 200 or the process dies (local_cross_worker_smoke pattern)."""
-    deadline = time.monotonic() + timeout_s
-    url = f"{endpoint}/health"
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            _log(f"server EXITED early (code {proc.returncode}) before /health")
-            return False
-        try:
-            with urllib.request.urlopen(url, timeout=5) as r:
-                if r.status == 200:
-                    return True
-        except Exception:
-            pass
-        time.sleep(HEALTH_POLL_S)
-    return False
-
-
-def _teardown(proc: subprocess.Popen) -> None:
-    """SIGTERM then SIGKILL — the squeeze runner removes the container; we kill the proc."""
-    proc.terminate()
-    try:
-        proc.wait(timeout=TEARDOWN_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            pass
-
-
-def _endpoint(port: int) -> str:
-    return f"http://127.0.0.1:{port}"
-
-
-def _default_ports() -> dict[str, int]:
-    """One port per arm so a stray server can't collide on the next arm's launch."""
-    return {ARM_A: 8000, ARM_B: 8001, ARM_C: 8002}
 
 
 # --------------------------------------------------------------------------- #
@@ -431,11 +329,13 @@ def run_gate(
     kv_cache_dtype: str = "auto",
     max_model_len: int = 16384,
     gpu_memory_utilization: float = 0.90,
+    port_w1: Optional[int] = None,
+    port_w2: Optional[int] = None,
 ) -> GateRunResult:
     """Run all three arms over ``spec`` in one topology and write the raw log.
 
-    For each arm in ARMS (A, B, C), SEQUENTIALLY on one card (launch -> measure ->
-    teardown), so HBM readings are never cross-contaminated:
+    For SINGLE-worker, each arm in ARMS (A, B, C) runs SEQUENTIALLY on one card (launch ->
+    measure -> teardown), so HBM readings are never cross-contaminated:
 
         1. build ArmLaunch via arms.build_arm_launch(...)
         2. (live) launch the vLLM subprocess with its env, wait /health, capture the log
@@ -449,18 +349,17 @@ def run_gate(
     launched: arms/salts/validity-of-config are still exercised; numeric fields are None and
     measured=False.
 
-    CROSS-WORKER CAVEAT (read before quoting any cross-worker number): this loop runs ONE
-    vLLM server per arm (A, B, C) and drives each once, exactly like the single-worker path —
-    it does NOT replicate the sequential two-worker store->retrieve pattern of
-    ``scripts/local_cross_worker_smoke.py`` (worker-1 stores KV to Redis and DIES, then a COLD
-    worker-2 with an empty local cache retrieves from Redis). Arm B here merely carries
-    ``--kv-transfer-config`` LMCache against its own live server, so it services its own
-    requests from its own LOCAL APC; ``external_prefix_cache_hits`` / ``external_kv_tokens_delta``
-    will be ~0 for STRUCTURAL reasons (no second cold worker ever reads from Redis), NOT because
-    ROMY's cross-worker offload failed. Treat cross-worker output from this harness as plumbing
-    only (it proves the LMCache launch flags + Redis wiring), never as a measured A-vs-B
-    cross-worker delta. A genuine cross-worker A/B measurement needs the two-worker sequence in
-    local_cross_worker_smoke.py run at MI300X scale (out of scope for run_gate today).
+    CROSS-WORKER: ``topology == cross_worker`` dispatches to the REAL two-worker
+    store->retrieve path in :func:`scripts.gate0.cross_worker.run_gate_cross_worker_real`
+    (worker-1 warms + STORES KV to Redis then DIES; a COLD worker-2 with an empty local cache
+    RETRIEVES from Redis). That path measures the decisive ``external_hits_delta`` /
+    ``external_kv_tokens_delta`` ON the cold worker-2 and folds them into this same §9 raw log,
+    so the cross-worker output IS a measured A-vs-B delta — not "plumbing only" as the legacy
+    single-server-per-arm cross path was. ``--mode dry`` for cross_worker still routes through
+    that real path's plumbing (both worker launches + salts + the LMCache config + the two
+    cross validity checks are exercised) but launches nothing and writes ``measured=False``
+    (-> INDECISIVE in analyze.py), with ZERO GPU calls. ``port_w1`` / ``port_w2`` are the
+    two-worker ports (defaults from cross_worker.DEFAULT_PORT_W1/W2).
     """
     if mode not in ("dry", "live"):
         raise ValueError(f"mode must be 'dry' or 'live', got {mode!r}")
@@ -468,6 +367,29 @@ def run_gate(
         raise ValueError(f"unknown topology {topology!r}")
     if topology == TOPOLOGY_CROSS and mode == "live" and not redis_url:
         raise ValueError("cross_worker live mode requires --redis-url (LMCache backend)")
+
+    # Cross-worker (live AND dry) goes through the REAL two-worker path. Lazy import keeps
+    # cross_worker.py free to `import harness` at module load (one-way dependency, no cycle).
+    if topology == TOPOLOGY_CROSS:
+        from scripts.gate0.cross_worker import (
+            DEFAULT_PORT_W1,
+            DEFAULT_PORT_W2,
+            run_gate_cross_worker_real,
+        )
+
+        return run_gate_cross_worker_real(
+            spec,
+            mode=mode,
+            device_id=device_id,
+            port_w1=port_w1 if port_w1 is not None else DEFAULT_PORT_W1,
+            port_w2=port_w2 if port_w2 is not None else DEFAULT_PORT_W2,
+            vllm_bin=vllm_bin,
+            redis_url=redis_url,
+            out_path=out_path,
+            kv_cache_dtype=kv_cache_dtype,
+            max_model_len=max_model_len,
+            gpu_memory_utilization=gpu_memory_utilization,
+        )
 
     ports = ports or _default_ports()
     bin_path = _vllm_bin(vllm_bin)
@@ -574,6 +496,7 @@ def run_gate(
         apc_log_paths=apc_log_paths if measured else None,
         prefix_metrics_c=prefix_metrics_c,
         hbm=first_hbm,
+        topology=topology,  # single_worker here (cross dispatches earlier); no cross checks fire
     )
 
     result = GateRunResult(
@@ -679,6 +602,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--port-a", type=int, default=8000)
     ap.add_argument("--port-b", type=int, default=8001)
     ap.add_argument("--port-c", type=int, default=8002)
+    ap.add_argument("--port-w1", type=int, default=8021, help="cross_worker: worker-1 (store) port")
+    ap.add_argument("--port-w2", type=int, default=8022, help="cross_worker: worker-2 (cold retrieve) port")
     ap.add_argument("--vllm-bin", default=None)
     ap.add_argument("--out", default=None, help="raw-log path (default logs/gate0/<name>_<topology>.json)")
     args = ap.parse_args(argv)
@@ -705,6 +630,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         kv_cache_dtype=args.kv_cache_dtype,
         max_model_len=args.max_model_len,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        port_w1=args.port_w1,
+        port_w2=args.port_w2,
     )
 
     # Operator one-liner: where the log went, whether it is quotable, and the loud reminder
