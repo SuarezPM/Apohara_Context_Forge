@@ -37,3 +37,28 @@ def test_out_of_domain_writes_nothing(tmp_path, monkeypatch):
             candidate_count=5, reuse_rate=1.5,  # out of [0,1]
             layout_shuffled=False, use_dense=True)
     assert not (tmp_path / "inv15_ledger.jsonl").exists()
+
+
+def test_path_traversal_via_symlink_raises_value_error(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("APOHARA_OBSERVABILITY_DIR", str(tmp_path))
+    recorders._reset_singletons()
+
+    # Create a symlink that points outside the audit directory
+    target = tmp_path.parent / "sensitive.jsonl"
+    target.touch()
+
+    # Symlink the inv15.jsonl inside our tmp_path to point to the external file
+    symlink_path = tmp_path / "inv15.jsonl"
+    os.symlink(target, symlink_path)
+
+    # Calling _get_audit_log should catch that the resolved path is no longer in tmp_path
+    with pytest.raises(ValueError):
+        recorders._get_audit_log()
+
+    # Same check for ledger
+    symlink_ledger = tmp_path / "inv15_ledger.jsonl"
+    os.symlink(target, symlink_ledger)
+
+    with pytest.raises(ValueError):
+        recorders._get_ledger()

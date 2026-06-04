@@ -31,7 +31,9 @@ def _get_audit_log() -> AuditLog:
         audit_dir = pathlib.Path(
             os.environ.get("APOHARA_OBSERVABILITY_DIR", "./.apohara/audit")
         ).expanduser().resolve()
-        _audit_log = AuditLog(str(audit_dir / "inv15.jsonl"))
+        final_path = (audit_dir / "inv15.jsonl").resolve()
+        final_path.relative_to(audit_dir)
+        _audit_log = AuditLog(str(final_path))
     return _audit_log
 
 
@@ -43,7 +45,9 @@ def _get_ledger():
         audit_dir = pathlib.Path(
             os.environ.get("APOHARA_OBSERVABILITY_DIR", "./.apohara/audit")
         ).expanduser().resolve()
-        _ledger = Ledger(str(audit_dir / "inv15_ledger.jsonl"))
+        final_path = (audit_dir / "inv15_ledger.jsonl").resolve()
+        final_path.relative_to(audit_dir)
+        _ledger = Ledger(str(final_path))
     return _ledger
 
 
