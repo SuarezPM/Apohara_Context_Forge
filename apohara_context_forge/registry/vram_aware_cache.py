@@ -12,7 +12,6 @@ Eviction modes:
 - EMERGENCY (VRAM >= 96%): Hard evict all idle > 30s, block new registrations
 """
 import asyncio
-import heapq
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -35,7 +34,7 @@ class EvictionMode(Enum):
 
 @dataclass(order=True)
 class CacheEntry:
-    # Priority for heap (lower = evict first): last_accessed - (access_count * 10)
+    # Priority (lower = evict first): last_accessed - (access_count * 10)
     # LFU/LRU hybrid: frequent+recent entries survive longer
     priority: float = field(compare=True)
     last_accessed: float = field(compare=False, default_factory=time.monotonic)
@@ -68,7 +67,6 @@ class VRAMAwareCache:
             step_graph: Optional workflow dependency graph for WORKFLOW_AWARE eviction
         """
         self._store: dict[str, CacheEntry] = {}
-        self._heap: list[CacheEntry] = []
         self._total_tokens: int = 0
         self._max_token_budget = max_token_budget
         self._vram = VRAMMonitor()
@@ -153,7 +151,6 @@ class VRAMAwareCache:
                 self._total_tokens -= old_entry.token_count
             
             self._store[key] = entry
-            heapq.heappush(self._heap, entry)
             self._total_tokens += token_count
         
         # Trigger eviction check if needed
@@ -274,9 +271,6 @@ class VRAMAwareCache:
                                 self._evict(key)
                                 evicted += 1
         
-        if evicted > 0:
-            await self._reheap()
-        
         return evicted
     
     def _evict(self, key: str) -> None:
@@ -285,16 +279,10 @@ class VRAMAwareCache:
         if entry:
             self._total_tokens -= entry.token_count
     
-    async def _reheap(self) -> None:
-        """Rebuild heap after evictions."""
-        self._heap = list(self._store.values())
-        heapq.heapify(self._heap)
-    
     async def clear(self) -> None:
         """Clear all entries."""
         async with self._lock:
             self._store.clear()
-            self._heap.clear()
             self._total_tokens = 0
     
     @property
