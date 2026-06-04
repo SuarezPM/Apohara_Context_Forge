@@ -167,6 +167,57 @@ def aiter_env() -> dict[str, str]:
     return env
 
 
+class VLLMServeArgsBuilder:
+    """A fluent builder for constructing vLLM serve CLI arguments."""
+
+    def __init__(self, model: str):
+        self._args: list[str] = ["serve", model]
+
+    def with_served_model_name(self, name: str) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--served-model-name", name])
+        return self
+
+    def with_port(self, port: int) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--port", str(port)])
+        return self
+
+    def enable_prefix_caching(self) -> "VLLMServeArgsBuilder":
+        self._args.append("--enable-prefix-caching")
+        return self
+
+    def with_kv_cache_dtype(self, dtype: str) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--kv-cache-dtype", dtype])
+        return self
+
+    def with_max_model_len(self, max_len: int) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--max-model-len", str(max_len)])
+        return self
+
+    def with_gpu_memory_utilization(self, util: float) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--gpu-memory-utilization", str(util)])
+        return self
+
+    def trust_remote_code(self) -> "VLLMServeArgsBuilder":
+        self._args.append("--trust-remote-code")
+        return self
+
+    def with_block_size(self, size: int) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--block-size", str(size)])
+        return self
+
+    def with_kv_transfer_config(self, config_json: str) -> "VLLMServeArgsBuilder":
+        self._args.extend(["--kv-transfer-config", config_json])
+        return self
+
+    def with_extra_args(self, extra: Optional[list[str]]) -> "VLLMServeArgsBuilder":
+        if extra:
+            self._args.extend(extra)
+        return self
+
+    def build(self) -> list[str]:
+        return list(self._args)
+
+
 def build_arm_launch(
     arm: str,
     *,
@@ -200,46 +251,35 @@ def build_arm_launch(
 
     served = _served_name(model)
 
-    # --- Base serve args: byte-for-byte the squeeze runner's order. ---------
-    # serve <model> --served-model-name <served> --port <port>
-    #   --enable-prefix-caching --kv-cache-dtype <kv> --max-model-len <maxlen>
-    #   --gpu-memory-utilization <util> --trust-remote-code [--block-size N]
-    serve_args: list[str] = [
-        "serve",
-        model,
-        "--served-model-name",
-        served,
-        "--port",
-        str(port),
-        "--enable-prefix-caching",
-        "--kv-cache-dtype",
-        kv_cache_dtype,
-        "--max-model-len",
-        str(max_model_len),
-        "--gpu-memory-utilization",
-        str(gpu_memory_utilization),
-        "--trust-remote-code",
+    builder = (
+        VLLMServeArgsBuilder(model)
+        .with_served_model_name(served)
+        .with_port(port)
+        .enable_prefix_caching()
+        .with_kv_cache_dtype(kv_cache_dtype)
+        .with_max_model_len(max_model_len)
+        .with_gpu_memory_utilization(gpu_memory_utilization)
+        .trust_remote_code()
         # Block size is part of the APC keying; it MUST match LMCache chunk_size
         # in the cross-worker B path, so we pin it explicitly on every arm to
         # keep the comparison identical (DEFAULT_BLOCK_SIZE).
-        "--block-size",
-        str(block_size),
-    ]
+        .with_block_size(block_size)
+    )
 
     # --- Cross-worker B is the ONLY arm that appends --kv-transfer-config. ---
     uses_lmcache = arm == ARM_B and topology == TOPOLOGY_CROSS
     if uses_lmcache:
         # build_kv_transfer_config_json enforces chunk_size == block_size and
         # emits LMCacheConnectorV1Dynamic — the only honest cross-worker hook.
-        serve_args += [
-            "--kv-transfer-config",
-            build_kv_transfer_config_json(block_size, block_size),
-        ]
+        builder.with_kv_transfer_config(
+            build_kv_transfer_config_json(block_size, block_size)
+        )
 
     # Operator-supplied extras (e.g. tensor-parallel) appended LAST so they are
     # identical across arms when the caller passes the same list.
-    if extra_args:
-        serve_args += list(extra_args)
+    builder.with_extra_args(extra_args)
+
+    serve_args = builder.build()
 
     # --- Env: AITER parity on EVERY arm; PYTHONHASHSEED=0 on EVERY arm. ------
     # worker_env() pins PYTHONHASHSEED=0 (mandatory for cross-worker salt
