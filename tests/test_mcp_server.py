@@ -415,6 +415,40 @@ def test_lifespan_constructs_and_disposes(monkeypatch: pytest.MonkeyPatch) -> No
     assert _LifeVllm.instances and _LifeVllm.instances[-1].closed is True
 
 
+def test_lifespan_registry_clear_exception(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _LifeRegExc:
+        async def clear(self) -> None:
+            raise RuntimeError("Simulated clear error")
+
+    class _LifeComp:
+        pass
+
+    class _LifeCoord:
+        def __init__(self, registry=None, compressor=None) -> None:
+            pass
+
+    class _LifeMetr:
+        pass
+
+    class _LifeVllm:
+        async def aclose(self) -> None:
+            pass
+
+    monkeypatch.setattr(srv, "ContextRegistry", _LifeRegExc)
+    monkeypatch.setattr(srv, "ContextCompressor", _LifeComp)
+    monkeypatch.setattr(srv, "CompressionCoordinator", _LifeCoord)
+    monkeypatch.setattr(srv, "MetricsCollector", _LifeMetr)
+    monkeypatch.setattr(srv, "VLLMClient", _LifeVllm)
+
+    with caplog.at_level(logging.WARNING):
+        with TestClient(app):
+            pass
+
+    assert "registry.clear() failed: Simulated clear error" in caplog.text
+
+
 def test_full_flow_register_then_optimize_passthrough() -> None:
     # Real ContextRegistry with a hermetic FakeDedupEngine (no model download)
     # plus a stub coordinator that always returns passthrough.
