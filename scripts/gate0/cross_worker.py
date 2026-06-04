@@ -117,37 +117,21 @@ def _drive_store(
         return None
 
 
-def _run_arm_two_worker(
+def _run_worker_1_store_pass(
     arm: str,
     launch: ArmLaunch,
     spec: WorkloadSpec,
     requests: list[WorkloadRequest],
     salts: list[RequestSalt],
     *,
-    launch_w2: ArmLaunch,
     endpoint_w1: str,
-    endpoint_w2: str,
-    device_id: int,
     vllm_bin: str,
-    lmcache_cfg_path: Optional[str],
     w1_log_path: str,
     w2_log_path: str,
     inv15_fires: int,
-) -> ArmResult:
-    """Run ONE arm through the real two-worker sequence and return its ArmResult.
-
-    The §9 ArmResult is populated from the WORKER-2 window: kv_footprint, throughput and the
-    decisive prefix_metrics (external_*_delta) all describe the COLD worker-2 that retrieves.
-    server_log_path points at worker-2's log (the one whose APC-ON the validity gate proves).
-    """
-    # extra_env for B: worker_env() is already merged into launch.env by build_arm_launch;
-    # the cross-worker B path additionally needs LMCACHE_CONFIG_FILE pointing at the YAML
-    # (the PROVEN remote_url form). A/C carry no LMCache config (APC-only cross baseline).
-    extra_env: Optional[dict[str, str]] = None
-    if launch.uses_lmcache and lmcache_cfg_path is not None:
-        extra_env = {"LMCACHE_CONFIG_FILE": lmcache_cfg_path}
-
-    # ---- Worker-1: warm + STORE to Redis, then DIE -------------------------
+    extra_env: Optional[dict[str, str]],
+) -> ArmResult | None:
+    """Worker-1: warm + STORE to Redis, then DIE."""
     p1: Optional[subprocess.Popen] = None
     try:
         p1, _ = _lifecycle.launch_server(
@@ -170,11 +154,24 @@ def _run_arm_two_worker(
         if p1 is not None:
             _lifecycle.teardown(p1)
             _lifecycle.log(f"arm {arm} worker-1 torn down (its local cache dies; Redis keeps chunks)")
+    return None
 
-    # Let Redis settle before the cold worker reads (smoke-proven).
-    time.sleep(REDIS_SETTLE_S)
 
-    # ---- Worker-2: COLD local cache, must RETRIEVE from Redis --------------
+def _run_worker_2_retrieve_pass(
+    arm: str,
+    spec: WorkloadSpec,
+    requests: list[WorkloadRequest],
+    salts: list[RequestSalt],
+    *,
+    launch_w2: ArmLaunch,
+    endpoint_w2: str,
+    device_id: int,
+    vllm_bin: str,
+    w2_log_path: str,
+    inv15_fires: int,
+    extra_env: Optional[dict[str, str]],
+) -> ArmResult:
+    """Worker-2: COLD local cache, must RETRIEVE from Redis."""
     p2: Optional[subprocess.Popen] = None
     try:
         # worker-2 uses launch_w2 (identical serve_args to worker-1 but --port=port_w2);
@@ -229,6 +226,70 @@ def _run_arm_two_worker(
         server_log_path=w2_log_path,
         inv15_fires=inv15_fires,
         measured=True,
+    )
+
+
+def _run_arm_two_worker(
+    arm: str,
+    launch: ArmLaunch,
+    spec: WorkloadSpec,
+    requests: list[WorkloadRequest],
+    salts: list[RequestSalt],
+    *,
+    launch_w2: ArmLaunch,
+    endpoint_w1: str,
+    endpoint_w2: str,
+    device_id: int,
+    vllm_bin: str,
+    lmcache_cfg_path: Optional[str],
+    w1_log_path: str,
+    w2_log_path: str,
+    inv15_fires: int,
+) -> ArmResult:
+    """Run ONE arm through the real two-worker sequence and return its ArmResult.
+
+    The §9 ArmResult is populated from the WORKER-2 window: kv_footprint, throughput and the
+    decisive prefix_metrics (external_*_delta) all describe the COLD worker-2 that retrieves.
+    server_log_path points at worker-2's log (the one whose APC-ON the validity gate proves).
+    """
+    # extra_env for B: worker_env() is already merged into launch.env by build_arm_launch;
+    # the cross-worker B path additionally needs LMCACHE_CONFIG_FILE pointing at the YAML
+    # (the PROVEN remote_url form). A/C carry no LMCache config (APC-only cross baseline).
+    extra_env: Optional[dict[str, str]] = None
+    if launch.uses_lmcache and lmcache_cfg_path is not None:
+        extra_env = {"LMCACHE_CONFIG_FILE": lmcache_cfg_path}
+
+    w1_result = _run_worker_1_store_pass(
+        arm,
+        launch,
+        spec,
+        requests,
+        salts,
+        endpoint_w1=endpoint_w1,
+        vllm_bin=vllm_bin,
+        w1_log_path=w1_log_path,
+        w2_log_path=w2_log_path,
+        inv15_fires=inv15_fires,
+        extra_env=extra_env,
+    )
+    if w1_result is not None:
+        return w1_result
+
+    # Let Redis settle before the cold worker reads (smoke-proven).
+    time.sleep(REDIS_SETTLE_S)
+
+    return _run_worker_2_retrieve_pass(
+        arm,
+        spec,
+        requests,
+        salts,
+        launch_w2=launch_w2,
+        endpoint_w2=endpoint_w2,
+        device_id=device_id,
+        vllm_bin=vllm_bin,
+        w2_log_path=w2_log_path,
+        inv15_fires=inv15_fires,
+        extra_env=extra_env,
     )
 
 
