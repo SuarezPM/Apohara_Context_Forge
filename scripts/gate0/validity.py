@@ -733,6 +733,79 @@ def check_n_requests(spec: "WorkloadSpec", *, min_requests: int = DEFAULT_MIN_RE
 # --------------------------------------------------------------------------- #
 # Fold                                                                         #
 # --------------------------------------------------------------------------- #
+def _evaluate_apc_on(apc_log_paths: dict[str, str] | None) -> list[ValidityCheck]:
+    checks: list[ValidityCheck] = []
+    if apc_log_paths:
+        for arm_id, log_path in apc_log_paths.items():
+            base = check_apc_on(log_path)
+            checks.append(
+                ValidityCheck(
+                    name=f"apc_on[{arm_id}]",
+                    passed=base.passed,
+                    required=base.required,
+                    detail=base.detail,
+                    evidence={**base.evidence, "arm": arm_id},
+                )
+            )
+    else:
+        checks.append(
+            _failed(
+                "apc_on",
+                required=True,
+                detail="no APC server logs supplied: APC-ON could not be verified for any arm.",
+                evidence={"enable_prefix_caching": None, "found": False},
+            )
+        )
+    return checks
+
+
+def _evaluate_c_control(
+    prefix_metrics_c: "PrefixMetrics" | None, c_max_hit_rate: float
+) -> list[ValidityCheck]:
+    checks: list[ValidityCheck] = []
+    if prefix_metrics_c is not None:
+        checks.append(check_c_control(prefix_metrics_c, max_hit_rate=c_max_hit_rate))
+    else:
+        checks.append(
+            _failed(
+                "c_control_zero",
+                required=True,
+                detail="arm C prefix metrics not supplied: negative control could not be verified.",
+                evidence={"hit_rate": None, "found": False},
+            )
+        )
+    return checks
+
+
+def _evaluate_cross_worker(
+    prefix_metrics_a: "PrefixMetrics" | None, prefix_metrics_b: "PrefixMetrics" | None
+) -> list[ValidityCheck]:
+    checks: list[ValidityCheck] = []
+    if prefix_metrics_b is not None:
+        checks.append(check_w2_cold_read(prefix_metrics_b))
+    else:
+        checks.append(
+            _failed(
+                "w2_cold_read",
+                required=True,
+                detail="arm B (cross) prefix metrics not supplied: cold worker-2 read could not be verified.",
+                evidence={"external_hits_delta": None, "found": False},
+            )
+        )
+    if prefix_metrics_a is not None:
+        checks.append(check_cross_negative_control(prefix_metrics_a))
+    else:
+        checks.append(
+            _failed(
+                "cross_negative_control",
+                required=True,
+                detail="arm A (cross) prefix metrics not supplied: APC-only cross baseline could not be verified.",
+                evidence={"external_hits_delta": None, "found": False},
+            )
+        )
+    return checks
+
+
 def run_all(
     *,
     arm_launches: list["ArmLaunch"],
@@ -763,30 +836,9 @@ def run_all(
     check that was skipped (its input missing) appears as a failed (not passed) entry, so a
     run missing a required input is correctly NOT quotable."""
     checks: list[ValidityCheck] = []
-    is_cross = topology == _CROSS_TOPOLOGY
 
     # (a) APC ON — one check per supplied server log.
-    if apc_log_paths:
-        for arm_id, log_path in apc_log_paths.items():
-            base = check_apc_on(log_path)
-            checks.append(
-                ValidityCheck(
-                    name=f"apc_on[{arm_id}]",
-                    passed=base.passed,
-                    required=base.required,
-                    detail=base.detail,
-                    evidence={**base.evidence, "arm": arm_id},
-                )
-            )
-    else:
-        checks.append(
-            _failed(
-                "apc_on",
-                required=True,
-                detail="no APC server logs supplied: APC-ON could not be verified for any arm.",
-                evidence={"enable_prefix_caching": None, "found": False},
-            )
-        )
+    checks.extend(_evaluate_apc_on(apc_log_paths))
 
     # Confound guards across arms.
     checks.append(check_aiter_parity(arm_launches))
@@ -794,43 +846,12 @@ def run_all(
 
     # (b) reuse / negative control.
     checks.append(check_shared_prefix_single(reuse))
-    if prefix_metrics_c is not None:
-        checks.append(check_c_control(prefix_metrics_c, max_hit_rate=c_max_hit_rate))
-    else:
-        checks.append(
-            _failed(
-                "c_control_zero",
-                required=True,
-                detail="arm C prefix metrics not supplied: negative control could not be verified.",
-                evidence={"hit_rate": None, "found": False},
-            )
-        )
+    checks.extend(_evaluate_c_control(prefix_metrics_c, c_max_hit_rate))
 
     # Cross-worker only: the two REQUIRED checks that make the real two-worker store->retrieve
     # path quotable. Single-worker has no second worker, so these are not evaluated there.
-    if is_cross:
-        if prefix_metrics_b is not None:
-            checks.append(check_w2_cold_read(prefix_metrics_b))
-        else:
-            checks.append(
-                _failed(
-                    "w2_cold_read",
-                    required=True,
-                    detail="arm B (cross) prefix metrics not supplied: cold worker-2 read could not be verified.",
-                    evidence={"external_hits_delta": None, "found": False},
-                )
-            )
-        if prefix_metrics_a is not None:
-            checks.append(check_cross_negative_control(prefix_metrics_a))
-        else:
-            checks.append(
-                _failed(
-                    "cross_negative_control",
-                    required=True,
-                    detail="arm A (cross) prefix metrics not supplied: APC-only cross baseline could not be verified.",
-                    evidence={"external_hits_delta": None, "found": False},
-                )
-            )
+    if topology == _CROSS_TOPOLOGY:
+        checks.extend(_evaluate_cross_worker(prefix_metrics_a, prefix_metrics_b))
 
     # (c) N sufficient.
     checks.append(check_n_requests(spec, min_requests=min_requests))
