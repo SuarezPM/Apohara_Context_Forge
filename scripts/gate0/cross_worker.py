@@ -117,36 +117,17 @@ def _drive_store(
         return None
 
 
-def _run_arm_two_worker(
+def _run_worker_1_store(
     arm: str,
     launch: ArmLaunch,
     spec: WorkloadSpec,
     requests: list[WorkloadRequest],
     salts: list[RequestSalt],
-    *,
-    launch_w2: ArmLaunch,
     endpoint_w1: str,
-    endpoint_w2: str,
-    device_id: int,
     vllm_bin: str,
-    lmcache_cfg_path: Optional[str],
     w1_log_path: str,
-    w2_log_path: str,
-    inv15_fires: int,
-) -> ArmResult:
-    """Run ONE arm through the real two-worker sequence and return its ArmResult.
-
-    The §9 ArmResult is populated from the WORKER-2 window: kv_footprint, throughput and the
-    decisive prefix_metrics (external_*_delta) all describe the COLD worker-2 that retrieves.
-    server_log_path points at worker-2's log (the one whose APC-ON the validity gate proves).
-    """
-    # extra_env for B: worker_env() is already merged into launch.env by build_arm_launch;
-    # the cross-worker B path additionally needs LMCACHE_CONFIG_FILE pointing at the YAML
-    # (the PROVEN remote_url form). A/C carry no LMCache config (APC-only cross baseline).
-    extra_env: Optional[dict[str, str]] = None
-    if launch.uses_lmcache and lmcache_cfg_path is not None:
-        extra_env = {"LMCACHE_CONFIG_FILE": lmcache_cfg_path}
-
+    extra_env: Optional[dict[str, str]],
+) -> bool:
     # ---- Worker-1: warm + STORE to Redis, then DIE -------------------------
     p1: Optional[subprocess.Popen] = None
     try:
@@ -155,7 +136,7 @@ def _run_arm_two_worker(
         )
         if not _lifecycle.wait_health(p1, endpoint_w1):
             _lifecycle.log(f"arm {arm} worker-1 NOT ready — recording UNMEASURED arm")
-            return _unmeasured_arm(arm, w2_log_path, inv15_fires)
+            return False
         _lifecycle.log(f"arm {arm} worker-1 READY at {endpoint_w1} — warming + storing to Redis")
         # Warmup the first prompt so the store pass isn't a cold-start outlier.
         try:
@@ -166,14 +147,26 @@ def _run_arm_two_worker(
             _lifecycle.log(f"arm {arm} worker-1 warmup failed (non-fatal): {e!r}")
         time.sleep(_lifecycle.SETTLE_S)
         _drive_store(spec, requests, salts, endpoint=endpoint_w1)
+        return True
     finally:
         if p1 is not None:
             _lifecycle.teardown(p1)
             _lifecycle.log(f"arm {arm} worker-1 torn down (its local cache dies; Redis keeps chunks)")
 
-    # Let Redis settle before the cold worker reads (smoke-proven).
-    time.sleep(REDIS_SETTLE_S)
 
+def _run_worker_2_retrieve(
+    arm: str,
+    launch_w2: ArmLaunch,
+    spec: WorkloadSpec,
+    requests: list[WorkloadRequest],
+    salts: list[RequestSalt],
+    endpoint_w2: str,
+    device_id: int,
+    vllm_bin: str,
+    w2_log_path: str,
+    extra_env: Optional[dict[str, str]],
+    inv15_fires: int,
+) -> ArmResult:
     # ---- Worker-2: COLD local cache, must RETRIEVE from Redis --------------
     p2: Optional[subprocess.Popen] = None
     try:
@@ -232,6 +225,59 @@ def _run_arm_two_worker(
     )
 
 
+def _run_arm_two_worker(
+    arm: str,
+    launch: ArmLaunch,
+    spec: WorkloadSpec,
+    requests: list[WorkloadRequest],
+    salts: list[RequestSalt],
+    *,
+    launch_w2: ArmLaunch,
+    endpoint_w1: str,
+    endpoint_w2: str,
+    device_id: int,
+    vllm_bin: str,
+    lmcache_cfg_path: Optional[str],
+    w1_log_path: str,
+    w2_log_path: str,
+    inv15_fires: int,
+) -> ArmResult:
+    """Run ONE arm through the real two-worker sequence and return its ArmResult.
+
+    The §9 ArmResult is populated from the WORKER-2 window: kv_footprint, throughput and the
+    decisive prefix_metrics (external_*_delta) all describe the COLD worker-2 that retrieves.
+    server_log_path points at worker-2's log (the one whose APC-ON the validity gate proves).
+    """
+    # extra_env for B: worker_env() is already merged into launch.env by build_arm_launch;
+    # the cross-worker B path additionally needs LMCACHE_CONFIG_FILE pointing at the YAML
+    # (the PROVEN remote_url form). A/C carry no LMCache config (APC-only cross baseline).
+    extra_env: Optional[dict[str, str]] = None
+    if launch.uses_lmcache and lmcache_cfg_path is not None:
+        extra_env = {"LMCACHE_CONFIG_FILE": lmcache_cfg_path}
+
+    if not _run_worker_1_store(
+        arm, launch, spec, requests, salts, endpoint_w1, vllm_bin, w1_log_path, extra_env
+    ):
+        return _unmeasured_arm(arm, w2_log_path, inv15_fires)
+
+    # Let Redis settle before the cold worker reads (smoke-proven).
+    time.sleep(REDIS_SETTLE_S)
+
+    return _run_worker_2_retrieve(
+        arm,
+        launch_w2,
+        spec,
+        requests,
+        salts,
+        endpoint_w2,
+        device_id,
+        vllm_bin,
+        w2_log_path,
+        extra_env,
+        inv15_fires,
+    )
+
+
 def _unmeasured_arm(arm: str, server_log_path: str, inv15_fires: int) -> ArmResult:
     """An arm whose worker never reached /health: no numbers, measured=False (mirrors the
     harness UNMEASURED-arm convention so a billing-but-broken live run can never be quoted)."""
@@ -252,6 +298,99 @@ def _dry_arm_cross(arm: str, server_log_path: str, inv15_fires: int) -> ArmResul
     """DRY result for one cross-worker arm: no server, no GPU, no numbers. The launch + salts
     + LMCache-config plumbing HAS been exercised; only measurement is absent (measured=False)."""
     return _unmeasured_arm(arm, server_log_path, inv15_fires)
+
+
+def _drive_cross_worker_arm(
+    arm: str,
+    spec: WorkloadSpec,
+    requests: list[WorkloadRequest],
+    reuse: "harness_mod.ReuseStats",
+    anchor_hash: str,
+    log_dir: Path,
+    redis_url: Optional[str],
+    port_w1: int,
+    port_w2: int,
+    device_id: int,
+    bin_path: Optional[str],
+    measured: bool,
+    max_model_len: int,
+    gpu_memory_utilization: float,
+    kv_cache_dtype: str,
+) -> tuple[ArmLaunch, str, ArmResult]:
+    """Sets up and runs a single cross-worker arm, returning its launch, log path, and result."""
+    launch = build_arm_launch(
+        arm,
+        model=spec.model,
+        topology=TOPOLOGY_CROSS,
+        block_size=harness_mod.DEFAULT_BLOCK_SIZE,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_memory_utilization,
+        kv_cache_dtype=kv_cache_dtype,
+        port=port_w1,
+    )
+
+    salts = salts_for_workload(
+        arm,
+        requests,
+        anchor_hash=anchor_hash,
+        cla_group="gate0",
+        reuse_rate=reuse.shared_prefix_fraction,
+    )
+    inv15_fires = harness_mod._count_inv15_fires(salts)
+
+    # The validity gate proves APC-ON from worker-2's log (the measured worker).
+    w1_log_path = str(log_dir / f"{spec.name}_{TOPOLOGY_CROSS}_{arm}_w1_server.log")
+    w2_log_path = str(log_dir / f"{spec.name}_{TOPOLOGY_CROSS}_{arm}_w2_server.log")
+
+    # LMCache config (PROVEN remote_url YAML) for arm B only; A/C are APC-only cross.
+    lmcache_cfg_path: Optional[str] = None
+    if launch.uses_lmcache:
+        lmcache_cfg_path = _lmcache_config_path(log_dir, spec, arm)
+        if redis_url:
+            write_lmcache_config(
+                lmcache_cfg_path,
+                remote_url=redis_url,
+                chunk_size=launch.block_size,
+            )
+            _lifecycle.log(f"arm {arm} wrote LMCache config -> {lmcache_cfg_path}")
+
+    if not measured:
+        # Dry: launches + salts + LMCache config plumbing exercised; no server/GPU/network.
+        result = _dry_arm_cross(arm, w2_log_path, inv15_fires)
+        return launch, w2_log_path, result
+
+    # Worker-2 (cold retrieve) runs on a DISTINCT port. build_arm_launch bakes --port into
+    # serve_args, so worker-2 needs its OWN launch on port_w2 (otherwise it binds port_w1
+    # and the port_w2 health check never passes). Identical serve_args otherwise — the
+    # cross-worker invariant is preserved per phase (all arms share these args).
+    launch_w2 = build_arm_launch(
+        arm,
+        model=spec.model,
+        topology=TOPOLOGY_CROSS,
+        block_size=harness_mod.DEFAULT_BLOCK_SIZE,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_memory_utilization,
+        kv_cache_dtype=kv_cache_dtype,
+        port=port_w2,
+    )
+
+    result = _run_arm_two_worker(
+        arm,
+        launch,
+        spec,
+        requests,
+        salts,
+        launch_w2=launch_w2,
+        endpoint_w1=_lifecycle.endpoint(port_w1),
+        endpoint_w2=_lifecycle.endpoint(port_w2),
+        device_id=device_id,
+        vllm_bin=bin_path,
+        lmcache_cfg_path=lmcache_cfg_path,
+        w1_log_path=w1_log_path,
+        w2_log_path=w2_log_path,
+        inv15_fires=inv15_fires,
+    )
+    return launch, w2_log_path, result
 
 
 def run_gate_cross_worker_real(
@@ -306,81 +445,27 @@ def run_gate_cross_worker_real(
     first_hbm: Optional[HBMReading] = None
 
     for arm in ARMS:
-        launch = build_arm_launch(
+        launch, w2_log_path, result = _drive_cross_worker_arm(
             arm,
-            model=spec.model,
-            topology=TOPOLOGY_CROSS,
-            block_size=harness_mod.DEFAULT_BLOCK_SIZE,
+            spec=spec,
+            requests=requests,
+            reuse=reuse,
+            anchor_hash=anchor_hash,
+            log_dir=log_dir,
+            redis_url=redis_url,
+            port_w1=port_w1,
+            port_w2=port_w2,
+            device_id=device_id,
+            bin_path=bin_path,
+            measured=measured,
             max_model_len=max_model_len,
             gpu_memory_utilization=gpu_memory_utilization,
             kv_cache_dtype=kv_cache_dtype,
-            port=port_w1,
         )
         arm_launches.append(launch)
-
-        salts = salts_for_workload(
-            arm,
-            requests,
-            anchor_hash=anchor_hash,
-            cla_group="gate0",
-            reuse_rate=reuse.shared_prefix_fraction,
-        )
-        inv15_fires = harness_mod._count_inv15_fires(salts)
-
-        # The validity gate proves APC-ON from worker-2's log (the measured worker).
-        w1_log_path = str(log_dir / f"{spec.name}_{TOPOLOGY_CROSS}_{arm}_w1_server.log")
-        w2_log_path = str(log_dir / f"{spec.name}_{TOPOLOGY_CROSS}_{arm}_w2_server.log")
         apc_log_paths[arm] = w2_log_path
-
-        # LMCache config (PROVEN remote_url YAML) for arm B only; A/C are APC-only cross.
-        lmcache_cfg_path: Optional[str] = None
-        if launch.uses_lmcache:
-            lmcache_cfg_path = _lmcache_config_path(log_dir, spec, arm)
-            if redis_url:
-                write_lmcache_config(
-                    lmcache_cfg_path,
-                    remote_url=redis_url,
-                    chunk_size=launch.block_size,
-                )
-                _lifecycle.log(f"arm {arm} wrote LMCache config -> {lmcache_cfg_path}")
-
-        if not measured:
-            # Dry: launches + salts + LMCache config plumbing exercised; no server/GPU/network.
-            arm_results[arm] = _dry_arm_cross(arm, w2_log_path, inv15_fires)
-            continue
-
-        # Worker-2 (cold retrieve) runs on a DISTINCT port. build_arm_launch bakes --port into
-        # serve_args, so worker-2 needs its OWN launch on port_w2 (otherwise it binds port_w1
-        # and the port_w2 health check never passes). Identical serve_args otherwise — the
-        # cross-worker invariant is preserved per phase (all arms share these args).
-        launch_w2 = build_arm_launch(
-            arm,
-            model=spec.model,
-            topology=TOPOLOGY_CROSS,
-            block_size=harness_mod.DEFAULT_BLOCK_SIZE,
-            max_model_len=max_model_len,
-            gpu_memory_utilization=gpu_memory_utilization,
-            kv_cache_dtype=kv_cache_dtype,
-            port=port_w2,
-        )
-
-        result = _run_arm_two_worker(
-            arm,
-            launch,
-            spec,
-            requests,
-            salts,
-            launch_w2=launch_w2,
-            endpoint_w1=_lifecycle.endpoint(port_w1),
-            endpoint_w2=_lifecycle.endpoint(port_w2),
-            device_id=device_id,
-            vllm_bin=bin_path,
-            lmcache_cfg_path=lmcache_cfg_path,
-            w1_log_path=w1_log_path,
-            w2_log_path=w2_log_path,
-            inv15_fires=inv15_fires,
-        )
         arm_results[arm] = result
+
         if first_hbm is None and result.kv_footprint is not None:
             first_hbm = result.kv_footprint.hbm
 

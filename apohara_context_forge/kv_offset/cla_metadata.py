@@ -18,6 +18,16 @@ NON_THOUGHT_ROLES = frozenset({"retriever", "summarizer", "formatter", "reviewer
 
 
 @dataclass
+class HintRequest:
+    """Request payload for emitting CLA hints."""
+    agent_id: str
+    model_id: str
+    is_thinking_mode: bool
+    model_layer_count: int = 64
+    agent_role: str = "default"
+
+
+@dataclass
 class CLAGroupConfig:
     """Configuration for CLA layer grouping strategy."""
     group_size: int = 2          # layers per group (2 = 2x reduction)
@@ -44,7 +54,8 @@ class CLAMetadataLayer:
     
     Usage:
         cla = CLAMetadataLayer(CLAGroupConfig(group_size=2))
-        hint = cla.emit_hint("agent1", "Qwen3.6-35B-A22B", is_thinking_mode=False, agent_role="retriever")
+        request = HintRequest("agent1", "Qwen3.6-35B-A22B", is_thinking_mode=False, agent_role="retriever")
+        hint = cla.emit_hint(request)
     """
     
     def __init__(self, config: CLAGroupConfig = CLAGroupConfig()):
@@ -93,50 +104,39 @@ class CLAMetadataLayer:
         
         return groups
     
-    def emit_hint(
-        self,
-        agent_id: str,
-        model_id: str,
-        is_thinking_mode: bool,
-        model_layer_count: int = 64,
-        agent_role: str = "default",
-    ) -> CLAHint:
+    def emit_hint(self, request: HintRequest) -> CLAHint:
         """
         Emit a CLAHint for a given agent.
         
-        If is_thinking_mode=True and thinking_mode_bypass is True,
+        If request.is_thinking_mode=True and thinking_mode_bypass is True,
         returns empty layer_groups and 0.0 vram_reduction.
         
         Args:
-            agent_id: Unique agent identifier
-            model_id: Model name (e.g., "Qwen3.6-35B-A22B")
-            is_thinking_mode: True if agent uses chain-of-thought reasoning
-            model_layer_count: Number of transformer layers
-            agent_role: Agent role for CLA eligibility determination
+            request: The HintRequest encapsulating the agent and model details
         
         Returns:
             CLAHint with layer_groups and estimated VRAM reduction
         """
         # Bypass if thinking mode and config says to bypass
-        if is_thinking_mode and self._config.thinking_mode_bypass:
+        if request.is_thinking_mode and self._config.thinking_mode_bypass:
             return CLAHint(
-                agent_id=agent_id,
-                model_id=model_id,
+                agent_id=request.agent_id,
+                model_id=request.model_id,
                 layer_groups=[],
                 estimated_vram_reduction_pct=0.0,
                 is_thinking_mode=True,
                 group_config=self._config,
             )
         
-        layer_groups = self.compute_layer_groups(model_layer_count, agent_role)
+        layer_groups = self.compute_layer_groups(request.model_layer_count, request.agent_role)
         vram_reduction = self.estimated_vram_reduction(layer_groups)
         
         return CLAHint(
-            agent_id=agent_id,
-            model_id=model_id,
+            agent_id=request.agent_id,
+            model_id=request.model_id,
             layer_groups=layer_groups,
             estimated_vram_reduction_pct=vram_reduction,
-            is_thinking_mode=is_thinking_mode,
+            is_thinking_mode=request.is_thinking_mode,
             group_config=self._config,
         )
     

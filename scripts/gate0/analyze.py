@@ -53,7 +53,7 @@ if str(REPO) not in sys.path:
 try:  # pragma: no cover - import wiring, exercised at runtime
     from scripts.gate0.metrics import CI, confidence_interval  # type: ignore
     _HAVE_METRICS = True
-except Exception:  # noqa: BLE001 - metrics may not exist yet (parallel build) / no GPU deps
+except ImportError:
     _HAVE_METRICS = False
 
     @dataclass
@@ -104,7 +104,7 @@ except Exception:  # noqa: BLE001 - metrics may not exist yet (parallel build) /
 def _is_nan(x: Any) -> bool:
     try:
         return isinstance(x, float) and math.isnan(x)
-    except Exception:  # noqa: BLE001
+    except TypeError:
         return False
 
 

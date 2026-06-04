@@ -193,33 +193,13 @@ def read_hbm(device_id: int = 0) -> HBMReading:
     )
 
 
-def read_kv_footprint(
-    endpoint: str,
-    device_id: int = 0,
-    *,
-    model_weight_gb: float | None = None,
+def _calculate_kv_footprint(
+    hbm: HBMReading,
+    raw: dict,
+    scrape: dict,
+    model_weight_gb: float | None,
 ) -> KVFootprint:
-    """PRIMARY 1. Prefer the EFFECTIVE KV footprint, in honest precedence order.
-
-      1. vLLM /metrics ``gpu_cache_usage_perc`` * KV-cache capacity (if both the
-         perc AND a derivable total are exposed) -> method='gpu_cache_usage_perc'
-      2. ``num_gpu_blocks_used`` * block_size * bytes_per_token (if all exposed)
-         -> method='num_gpu_blocks'
-      3. device-wide HBM minus ``model_weight_gb`` (only if the caller passes the
-         post-load / pre-traffic baseline) -> method='hbm_minus_weights'
-      4. fall back to device-wide HBM, method='hbm_device_wide(NOT_ISOLATED)',
-         with a LOUD note that this does NOT isolate KV (the qwen3-32b run showed
-         identical 175.393 GB shared vs isolated — device-wide HBM dilutes the KV
-         delta to ~0 at slack).
-
-    The device-wide HBM reading is ALWAYS captured (so the report keeps the raw
-    eye even when the effective number is not isolable). No fabrication: if the
-    HBM read itself is invalid, ``kv_used_gb`` is None.
-    """
-    hbm = read_hbm(device_id)
-    raw = fetch_prefix_metrics(endpoint)  # cheap; also primes the /metrics scrape
-    scrape = _scrape_kv_gauges(endpoint)
-
+    """Internal helper to calculate KV footprint from fetched metrics."""
     gpu_cache_usage_perc = scrape.get("gpu_cache_usage_perc")
 
     # --- method 1: gpu_cache_usage_perc * KV-cache capacity -----------------
@@ -307,6 +287,41 @@ def read_kv_footprint(
             "gauges are supplied."
             + (f" (/metrics error: {metrics_err})" if metrics_err else "")
         ),
+    )
+
+
+def read_kv_footprint(
+    endpoint: str,
+    device_id: int = 0,
+    *,
+    model_weight_gb: float | None = None,
+) -> KVFootprint:
+    """PRIMARY 1. Prefer the EFFECTIVE KV footprint, in honest precedence order.
+
+      1. vLLM /metrics ``gpu_cache_usage_perc`` * KV-cache capacity (if both the
+         perc AND a derivable total are exposed) -> method='gpu_cache_usage_perc'
+      2. ``num_gpu_blocks_used`` * block_size * bytes_per_token (if all exposed)
+         -> method='num_gpu_blocks'
+      3. device-wide HBM minus ``model_weight_gb`` (only if the caller passes the
+         post-load / pre-traffic baseline) -> method='hbm_minus_weights'
+      4. fall back to device-wide HBM, method='hbm_device_wide(NOT_ISOLATED)',
+         with a LOUD note that this does NOT isolate KV (the qwen3-32b run showed
+         identical 175.393 GB shared vs isolated — device-wide HBM dilutes the KV
+         delta to ~0 at slack).
+
+    The device-wide HBM reading is ALWAYS captured (so the report keeps the raw
+    eye even when the effective number is not isolable). No fabrication: if the
+    HBM read itself is invalid, ``kv_used_gb`` is None.
+    """
+    hbm = read_hbm(device_id)
+    raw = fetch_prefix_metrics(endpoint)  # cheap; also primes the /metrics scrape
+    scrape = _scrape_kv_gauges(endpoint)
+
+    return _calculate_kv_footprint(
+        hbm=hbm,
+        raw=raw,
+        scrape=scrape,
+        model_weight_gb=model_weight_gb,
     )
 
 

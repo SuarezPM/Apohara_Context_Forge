@@ -42,13 +42,14 @@ canonical seed env) and ``aiter_config.AITERConfig`` (for the AITER parity key s
 
 Apache-2.0 — Apohara ContextForge.
 """
+
 from __future__ import annotations
 
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
@@ -56,7 +57,9 @@ sys.path.insert(0, str(REPO))
 from apohara_context_forge.serving.aiter_config import AITERConfig  # noqa: E402
 from apohara_context_forge.serving.vllm_launch_config import worker_env  # noqa: E402
 
-if TYPE_CHECKING:  # pragma: no cover — types only; siblings may not exist yet at import time.
+if (
+    TYPE_CHECKING
+):  # pragma: no cover — types only; siblings may not exist yet at import time.
     from scripts.gate0.arms import ArmLaunch
     from scripts.gate0.metrics import HBMReading, PrefixMetrics
     from scripts.gate0.workload import ReuseStats, WorkloadSpec
@@ -119,12 +122,12 @@ class ValidityCheck:
     """One gate's verdict. ``required`` checks gate quotability; ``evidence`` is the
     machine-readable proof copied into the raw log (§9 ``validity.checks``)."""
 
-    name: str            # "apc_on" | "aiter_parity" | "seed_pinned" | "c_control_zero" |
+    name: str  # "apc_on" | "aiter_parity" | "seed_pinned" | "c_control_zero" |
     #                      "shared_prefix_single" | "vram_source_honest" | "n_requests_sufficient"
     passed: bool
-    required: bool       # if True and not passed -> run is NOT quotable
-    detail: str          # human-readable evidence string (grep match, value, actionable fix)
-    evidence: dict       # machine-readable evidence (e.g. {"enable_prefix_caching": True})
+    required: bool  # if True and not passed -> run is NOT quotable
+    detail: str  # human-readable evidence string (grep match, value, actionable fix)
+    evidence: dict  # machine-readable evidence (e.g. {"enable_prefix_caching": True})
 
 
 @dataclass(frozen=True)
@@ -147,11 +150,15 @@ _APC_RE = re.compile(r"(?<![A-Za-z_])enable_prefix_caching\s*=\s*(True|False)")
 
 
 def _failed(name: str, *, required: bool, detail: str, evidence: dict) -> ValidityCheck:
-    return ValidityCheck(name=name, passed=False, required=required, detail=detail, evidence=evidence)
+    return ValidityCheck(
+        name=name, passed=False, required=required, detail=detail, evidence=evidence
+    )
 
 
 def _passed(name: str, *, required: bool, detail: str, evidence: dict) -> ValidityCheck:
-    return ValidityCheck(name=name, passed=True, required=required, detail=detail, evidence=evidence)
+    return ValidityCheck(
+        name=name, passed=True, required=required, detail=detail, evidence=evidence
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -177,7 +184,11 @@ def check_apc_on(server_log_path: str) -> ValidityCheck:
                 "Re-run the arm capturing the vLLM stdout/stderr to a file and pass its "
                 "path here (the squeeze runner already tees to logs/gate0/<arm>_server.log)."
             ),
-            evidence={"enable_prefix_caching": None, "server_log_path": server_log_path, "found": False},
+            evidence={
+                "enable_prefix_caching": None,
+                "server_log_path": server_log_path,
+                "found": False,
+            },
         )
 
     try:
@@ -187,7 +198,11 @@ def check_apc_on(server_log_path: str) -> ValidityCheck:
             name,
             required=True,
             detail=f"could not read server log {server_log_path!r}: {exc!r}",
-            evidence={"enable_prefix_caching": None, "server_log_path": server_log_path, "found": False},
+            evidence={
+                "enable_prefix_caching": None,
+                "server_log_path": server_log_path,
+                "found": False,
+            },
         )
 
     matches = list(_APC_RE.finditer(text))
@@ -200,7 +215,11 @@ def check_apc_on(server_log_path: str) -> ValidityCheck:
                 "engine-init line (core.py) was not captured — the server may have crashed "
                 "before init, or only partial logs were saved. Capture the FULL startup log."
             ),
-            evidence={"enable_prefix_caching": None, "server_log_path": server_log_path, "found": False},
+            evidence={
+                "enable_prefix_caching": None,
+                "server_log_path": server_log_path,
+                "found": False,
+            },
         )
 
     last = matches[-1]
@@ -208,7 +227,7 @@ def check_apc_on(server_log_path: str) -> ValidityCheck:
     # Reconstruct the matched line for the human-readable evidence string.
     line_start = text.rfind("\n", 0, last.start()) + 1
     line_end = text.find("\n", last.end())
-    line = text[line_start: line_end if line_end != -1 else len(text)].strip()
+    line = text[line_start : line_end if line_end != -1 else len(text)].strip()
     evidence = {
         "enable_prefix_caching": enabled,
         "server_log_path": server_log_path,
@@ -327,7 +346,11 @@ def check_seed_pinned(arm_launches: list["ArmLaunch"]) -> ValidityCheck:
         "any_cross_worker": any_cross,
     }
     if offenders:
-        scope = "MANDATORY (cross-worker present)" if required else "recommended (single-worker only)"
+        scope = (
+            "MANDATORY (cross-worker present)"
+            if required
+            else "recommended (single-worker only)"
+        )
         return _failed(
             name,
             required=required,
@@ -346,7 +369,9 @@ def check_seed_pinned(arm_launches: list["ArmLaunch"]) -> ValidityCheck:
     )
 
 
-def check_c_control(prefix_metrics_c: "PrefixMetrics", *, max_hit_rate: float = DEFAULT_C_MAX_HIT_RATE) -> ValidityCheck:
+def check_c_control(
+    prefix_metrics_c: "PrefixMetrics", *, max_hit_rate: float = DEFAULT_C_MAX_HIT_RATE
+) -> ValidityCheck:
     """Arm C (isolated per-request salts) must give ~0% cross-agent hit_rate. This is what
     proves the harness measures *sharing* and not just same-prompt APC: if C also hits, then
     a positive B is not attributable to ROMY's shared salts.
@@ -374,7 +399,11 @@ def check_c_control(prefix_metrics_c: "PrefixMetrics", *, max_hit_rate: float = 
                 f"arm C /metrics read errored ({err!r}): cannot certify the negative control. "
                 "Fix the /metrics endpoint and re-run arm C."
             ),
-            evidence={"hit_rate": None, "max_hit_rate": max_hit_rate, "error": str(err)},
+            evidence={
+                "hit_rate": None,
+                "max_hit_rate": max_hit_rate,
+                "error": str(err),
+            },
         )
 
     hit_rate = getattr(prefix_metrics_c, "hit_rate", None)
@@ -540,7 +569,11 @@ def check_cross_negative_control(
                 "arm A (cross) prefix metrics missing: cannot certify the APC-only cross "
                 "baseline. Run arm A's two-worker sequence and pass worker-2's PrefixMetrics."
             ),
-            evidence={"external_hits_delta": None, "max_external_hits": max_external_hits, "found": False},
+            evidence={
+                "external_hits_delta": None,
+                "max_external_hits": max_external_hits,
+                "found": False,
+            },
         )
 
     err = getattr(prefix_metrics_a, "error", None)
@@ -552,13 +585,19 @@ def check_cross_negative_control(
                 f"arm A (cross) /metrics read errored ({err!r}): cannot certify the APC-only "
                 "cross baseline. Fix the /metrics endpoint and re-run arm A."
             ),
-            evidence={"external_hits_delta": None, "max_external_hits": max_external_hits, "error": str(err)},
+            evidence={
+                "external_hits_delta": None,
+                "max_external_hits": max_external_hits,
+                "error": str(err),
+            },
         )
 
     external_hits = getattr(prefix_metrics_a, "external_hits_delta", None)
     evidence = {
         "external_hits_delta": external_hits,
-        "external_kv_tokens_delta": getattr(prefix_metrics_a, "external_kv_tokens_delta", None),
+        "external_kv_tokens_delta": getattr(
+            prefix_metrics_a, "external_kv_tokens_delta", None
+        ),
         "max_external_hits": max_external_hits,
     }
     if external_hits is None:
@@ -652,7 +691,11 @@ def check_vram_source_honest(hbm: "HBMReading") -> ValidityCheck:
             name,
             required=True,
             detail="HBM reading missing: cannot certify the VRAM source. No VRAM number is quotable.",
-            evidence={"vram_source": None, "found": False, "honest_sources": sorted(HONEST_VRAM_SOURCES)},
+            evidence={
+                "vram_source": None,
+                "found": False,
+                "honest_sources": sorted(HONEST_VRAM_SOURCES),
+            },
         )
 
     source = getattr(hbm, "vram_source", None)
@@ -689,7 +732,9 @@ def check_vram_source_honest(hbm: "HBMReading") -> ValidityCheck:
     )
 
 
-def check_n_requests(spec: "WorkloadSpec", *, min_requests: int = DEFAULT_MIN_REQUESTS) -> ValidityCheck:
+def check_n_requests(
+    spec: "WorkloadSpec", *, min_requests: int = DEFAULT_MIN_REQUESTS
+) -> ValidityCheck:
     """Protocol §6(c): N must be large enough for a tight CI (explicitly NOT ~28).
     ``min_requests`` is a floor, not a target — the report still shows the achieved CI width.
     ``required=True``."""
@@ -733,6 +778,79 @@ def check_n_requests(spec: "WorkloadSpec", *, min_requests: int = DEFAULT_MIN_RE
 # --------------------------------------------------------------------------- #
 # Fold                                                                         #
 # --------------------------------------------------------------------------- #
+def _evaluate_apc_on(apc_log_paths: dict[str, str] | None) -> list[ValidityCheck]:
+    checks: list[ValidityCheck] = []
+    if apc_log_paths:
+        for arm_id, log_path in apc_log_paths.items():
+            base = check_apc_on(log_path)
+            checks.append(
+                ValidityCheck(
+                    name=f"apc_on[{arm_id}]",
+                    passed=base.passed,
+                    required=base.required,
+                    detail=base.detail,
+                    evidence={**base.evidence, "arm": arm_id},
+                )
+            )
+    else:
+        checks.append(
+            _failed(
+                "apc_on",
+                required=True,
+                detail="no APC server logs supplied: APC-ON could not be verified for any arm.",
+                evidence={"enable_prefix_caching": None, "found": False},
+            )
+        )
+    return checks
+
+
+def _evaluate_c_control(
+    prefix_metrics_c: "PrefixMetrics" | None, c_max_hit_rate: float
+) -> list[ValidityCheck]:
+    checks: list[ValidityCheck] = []
+    if prefix_metrics_c is not None:
+        checks.append(check_c_control(prefix_metrics_c, max_hit_rate=c_max_hit_rate))
+    else:
+        checks.append(
+            _failed(
+                "c_control_zero",
+                required=True,
+                detail="arm C prefix metrics not supplied: negative control could not be verified.",
+                evidence={"hit_rate": None, "found": False},
+            )
+        )
+    return checks
+
+
+def _evaluate_cross_worker(
+    prefix_metrics_a: "PrefixMetrics" | None, prefix_metrics_b: "PrefixMetrics" | None
+) -> list[ValidityCheck]:
+    checks: list[ValidityCheck] = []
+    if prefix_metrics_b is not None:
+        checks.append(check_w2_cold_read(prefix_metrics_b))
+    else:
+        checks.append(
+            _failed(
+                "w2_cold_read",
+                required=True,
+                detail="arm B (cross) prefix metrics not supplied: cold worker-2 read could not be verified.",
+                evidence={"external_hits_delta": None, "found": False},
+            )
+        )
+    if prefix_metrics_a is not None:
+        checks.append(check_cross_negative_control(prefix_metrics_a))
+    else:
+        checks.append(
+            _failed(
+                "cross_negative_control",
+                required=True,
+                detail="arm A (cross) prefix metrics not supplied: APC-only cross baseline could not be verified.",
+                evidence={"external_hits_delta": None, "found": False},
+            )
+        )
+    return checks
+
+
 def run_all(
     *,
     arm_launches: list["ArmLaunch"],
@@ -763,30 +881,9 @@ def run_all(
     check that was skipped (its input missing) appears as a failed (not passed) entry, so a
     run missing a required input is correctly NOT quotable."""
     checks: list[ValidityCheck] = []
-    is_cross = topology == _CROSS_TOPOLOGY
 
     # (a) APC ON — one check per supplied server log.
-    if apc_log_paths:
-        for arm_id, log_path in apc_log_paths.items():
-            base = check_apc_on(log_path)
-            checks.append(
-                ValidityCheck(
-                    name=f"apc_on[{arm_id}]",
-                    passed=base.passed,
-                    required=base.required,
-                    detail=base.detail,
-                    evidence={**base.evidence, "arm": arm_id},
-                )
-            )
-    else:
-        checks.append(
-            _failed(
-                "apc_on",
-                required=True,
-                detail="no APC server logs supplied: APC-ON could not be verified for any arm.",
-                evidence={"enable_prefix_caching": None, "found": False},
-            )
-        )
+    checks.extend(_evaluate_apc_on(apc_log_paths))
 
     # Confound guards across arms.
     checks.append(check_aiter_parity(arm_launches))
@@ -794,43 +891,12 @@ def run_all(
 
     # (b) reuse / negative control.
     checks.append(check_shared_prefix_single(reuse))
-    if prefix_metrics_c is not None:
-        checks.append(check_c_control(prefix_metrics_c, max_hit_rate=c_max_hit_rate))
-    else:
-        checks.append(
-            _failed(
-                "c_control_zero",
-                required=True,
-                detail="arm C prefix metrics not supplied: negative control could not be verified.",
-                evidence={"hit_rate": None, "found": False},
-            )
-        )
+    checks.extend(_evaluate_c_control(prefix_metrics_c, c_max_hit_rate))
 
     # Cross-worker only: the two REQUIRED checks that make the real two-worker store->retrieve
     # path quotable. Single-worker has no second worker, so these are not evaluated there.
-    if is_cross:
-        if prefix_metrics_b is not None:
-            checks.append(check_w2_cold_read(prefix_metrics_b))
-        else:
-            checks.append(
-                _failed(
-                    "w2_cold_read",
-                    required=True,
-                    detail="arm B (cross) prefix metrics not supplied: cold worker-2 read could not be verified.",
-                    evidence={"external_hits_delta": None, "found": False},
-                )
-            )
-        if prefix_metrics_a is not None:
-            checks.append(check_cross_negative_control(prefix_metrics_a))
-        else:
-            checks.append(
-                _failed(
-                    "cross_negative_control",
-                    required=True,
-                    detail="arm A (cross) prefix metrics not supplied: APC-only cross baseline could not be verified.",
-                    evidence={"external_hits_delta": None, "found": False},
-                )
-            )
+    if topology == _CROSS_TOPOLOGY:
+        checks.extend(_evaluate_cross_worker(prefix_metrics_a, prefix_metrics_b))
 
     # (c) N sufficient.
     checks.append(check_n_requests(spec, min_requests=min_requests))
@@ -857,9 +923,323 @@ def run_all(
 # Exercises the parsers/gates against in-memory stand-ins so the plumbing is verifiable
 # on any box. NOT a measurement; prints PASS/FAIL of the gates' own logic only.
 # --------------------------------------------------------------------------- #
+
+
+def _test_apc_on(expect, path_true, path_false):  # pragma: no cover
+    expect(check_apc_on(path_true).passed, "check_apc_on True -> passed")
+    expect(not check_apc_on(path_false).passed, "check_apc_on False -> failed")
+    expect(
+        not check_apc_on("/nonexistent/server.log").passed,
+        "check_apc_on missing file -> failed",
+    )
+
+
+def _test_aiter_parity(expect, aiter, seed):  # pragma: no cover
+    from types import SimpleNamespace
+
+    arm_a = SimpleNamespace(
+        arm="A", topology="single_worker", env={**aiter, **seed}, aiter_applied=True
+    )
+    arm_b = SimpleNamespace(
+        arm="B", topology="single_worker", env={**aiter, **seed}, aiter_applied=True
+    )
+    arm_c = SimpleNamespace(
+        arm="C", topology="single_worker", env={**aiter, **seed}, aiter_applied=True
+    )
+    expect(
+        check_aiter_parity([arm_a, arm_b, arm_c]).passed,
+        "check_aiter_parity identical -> passed",
+    )
+    bad = SimpleNamespace(
+        arm="B", topology="single_worker", env={**seed}, aiter_applied=False
+    )
+    expect(
+        not check_aiter_parity([arm_a, bad]).passed, "check_aiter_parity diff -> failed"
+    )
+    return arm_a, arm_b, arm_c
+
+
+def _test_seed_pinned(expect, arm_a, arm_b, arm_c, aiter):  # pragma: no cover
+    from types import SimpleNamespace
+
+    expect(
+        check_seed_pinned([arm_a, arm_b, arm_c]).passed,
+        "check_seed_pinned pinned -> passed",
+    )
+    no_seed_cross = SimpleNamespace(
+        arm="A", topology="cross_worker", env={**aiter}, aiter_applied=True
+    )
+    chk = check_seed_pinned([no_seed_cross])
+    expect(
+        (not chk.passed) and chk.required,
+        "check_seed_pinned cross missing -> failed+required",
+    )
+    no_seed_single = SimpleNamespace(
+        arm="A", topology="single_worker", env={**aiter}, aiter_applied=True
+    )
+    chk = check_seed_pinned([no_seed_single])
+    expect(
+        (not chk.passed) and (not chk.required),
+        "check_seed_pinned single missing -> failed+recommended",
+    )
+
+
+def _test_c_control(expect):  # pragma: no cover
+    from types import SimpleNamespace
+
+    pm_clean = SimpleNamespace(
+        hit_rate=0.0, queries_delta=300.0, hits_delta=0.0, error=None
+    )
+    pm_hot = SimpleNamespace(
+        hit_rate=0.42, queries_delta=300.0, hits_delta=126.0, error=None
+    )
+    pm_vacuous = SimpleNamespace(
+        hit_rate=0.0, queries_delta=0.0, hits_delta=0.0, error=None
+    )
+    expect(check_c_control(pm_clean).passed, "check_c_control ~0% -> passed")
+    expect(not check_c_control(pm_hot).passed, "check_c_control hitting -> failed")
+    expect(
+        not check_c_control(pm_vacuous).passed, "check_c_control no-queries -> failed"
+    )
+    return pm_clean
+
+
+def _test_w2_cold_read(expect):  # pragma: no cover
+    from types import SimpleNamespace
+
+    pm_b_cold = SimpleNamespace(
+        external_hits_delta=240.0,
+        external_kv_tokens_delta=15360.0,
+        hit_rate=0.05,
+        error=None,
+    )
+    pm_b_no_ext = SimpleNamespace(
+        external_hits_delta=0.0, external_kv_tokens_delta=0.0, hit_rate=0.02, error=None
+    )
+    pm_b_warm = SimpleNamespace(
+        external_hits_delta=240.0,
+        external_kv_tokens_delta=15360.0,
+        hit_rate=0.85,
+        error=None,
+    )
+    expect(
+        check_w2_cold_read(pm_b_cold).passed,
+        "check_w2_cold_read external+cold -> passed",
+    )
+    expect(
+        not check_w2_cold_read(pm_b_no_ext).passed,
+        "check_w2_cold_read no external -> failed",
+    )
+    expect(
+        not check_w2_cold_read(pm_b_warm).passed,
+        "check_w2_cold_read warm local -> failed",
+    )
+    expect(not check_w2_cold_read(None).passed, "check_w2_cold_read missing -> failed")
+    return pm_b_cold, pm_b_no_ext
+
+
+def _test_cross_negative_control(expect):  # pragma: no cover
+    from types import SimpleNamespace
+
+    pm_a_clean = SimpleNamespace(
+        external_hits_delta=0.0, external_kv_tokens_delta=0.0, error=None
+    )
+    pm_a_leak = SimpleNamespace(
+        external_hits_delta=12.0, external_kv_tokens_delta=192.0, error=None
+    )
+    expect(
+        check_cross_negative_control(pm_a_clean).passed,
+        "check_cross_negative_control 0 ext -> passed",
+    )
+    expect(
+        not check_cross_negative_control(pm_a_leak).passed,
+        "check_cross_negative_control leak -> failed",
+    )
+    expect(
+        not check_cross_negative_control(None).passed,
+        "check_cross_negative_control missing -> failed",
+    )
+    return pm_a_clean
+
+
+def _test_shared_prefix_single(expect):  # pragma: no cover
+    from types import SimpleNamespace
+
+    expect(
+        check_shared_prefix_single(
+            SimpleNamespace(
+                n_distinct_prefixes=1,
+                canonical_prefix_hash="ab",
+                shared_prefix_fraction=1.0,
+                n_requests=320,
+            )
+        ).passed,
+        "check_shared_prefix_single ==1 -> passed",
+    )
+    expect(
+        not check_shared_prefix_single(
+            SimpleNamespace(
+                n_distinct_prefixes=3,
+                canonical_prefix_hash="ab",
+                shared_prefix_fraction=0.4,
+                n_requests=320,
+            )
+        ).passed,
+        "check_shared_prefix_single >1 -> failed",
+    )
+
+
+def _test_vram_source_honest(expect):  # pragma: no cover
+    from types import SimpleNamespace
+
+    expect(
+        check_vram_source_honest(
+            SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi")
+        ).passed,
+        "check_vram_source_honest pyrsmi -> passed",
+    )
+    expect(
+        not check_vram_source_honest(
+            SimpleNamespace(
+                vram_source="amd_default_192gb", valid=False, second_source=None
+            )
+        ).passed,
+        "check_vram_source_honest 192gb default -> failed",
+    )
+
+
+def _test_n_requests(expect):  # pragma: no cover
+    from types import SimpleNamespace
+
+    expect(
+        check_n_requests(SimpleNamespace(n_requests=320)).passed,
+        "check_n_requests 320 -> passed",
+    )
+    expect(
+        not check_n_requests(SimpleNamespace(n_requests=28)).passed,
+        "check_n_requests 28 -> failed",
+    )
+
+
+def _test_run_all_folds(
+    expect,
+    arm_a,
+    arm_b,
+    arm_c,
+    path_true,
+    pm_clean,
+    aiter,
+    seed,
+    pm_a_clean,
+    pm_b_cold,
+    pm_b_no_ext,
+):
+    from types import SimpleNamespace
+
+    # Fold: a fully-clean run is quotable.
+    report = run_all(
+        arm_launches=[arm_a, arm_b, arm_c],
+        reuse=SimpleNamespace(
+            n_distinct_prefixes=1,
+            canonical_prefix_hash="ab",
+            shared_prefix_fraction=1.0,
+            n_requests=320,
+        ),
+        spec=SimpleNamespace(n_requests=320),
+        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
+        prefix_metrics_c=pm_clean,
+        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
+    )
+    expect(report.quotable, f"run_all clean -> quotable ({report.summary})")
+
+    # Fold: a run missing arm C metrics is NOT quotable.
+    report_bad = run_all(
+        arm_launches=[arm_a, arm_b, arm_c],
+        reuse=SimpleNamespace(
+            n_distinct_prefixes=1,
+            canonical_prefix_hash="ab",
+            shared_prefix_fraction=1.0,
+            n_requests=320,
+        ),
+        spec=SimpleNamespace(n_requests=320),
+        apc_log_paths={"A": path_true},
+        prefix_metrics_c=None,
+        hbm=None,
+    )
+    expect(
+        not report_bad.quotable,
+        f"run_all missing-C -> NOT quotable ({report_bad.summary})",
+    )
+
+    # Fold (cross-worker): a clean two-worker run is quotable; the two cross-only required
+    # checks (w2_cold_read, cross_negative_control) appear and pass.
+    arm_a_x = SimpleNamespace(
+        arm="A", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True
+    )
+    arm_b_x = SimpleNamespace(
+        arm="B", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True
+    )
+    arm_c_x = SimpleNamespace(
+        arm="C", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True
+    )
+    report_x = run_all(
+        arm_launches=[arm_a_x, arm_b_x, arm_c_x],
+        reuse=SimpleNamespace(
+            n_distinct_prefixes=1,
+            canonical_prefix_hash="ab",
+            shared_prefix_fraction=1.0,
+            n_requests=320,
+        ),
+        spec=SimpleNamespace(n_requests=320),
+        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
+        prefix_metrics_c=pm_clean,
+        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
+        topology="cross_worker",
+        prefix_metrics_a=pm_a_clean,
+        prefix_metrics_b=pm_b_cold,
+    )
+    cross_names = {c.name for c in report_x.checks}
+    expect("w2_cold_read" in cross_names, "run_all cross -> w2_cold_read present")
+    expect(
+        "cross_negative_control" in cross_names,
+        "run_all cross -> cross_negative_control present",
+    )
+    expect(report_x.quotable, f"run_all cross clean -> quotable ({report_x.summary})")
+
+    # Fold (cross-worker): a run where B did not cold-read (no external hits) is NOT quotable.
+    report_x_bad = run_all(
+        arm_launches=[arm_a_x, arm_b_x, arm_c_x],
+        reuse=SimpleNamespace(
+            n_distinct_prefixes=1,
+            canonical_prefix_hash="ab",
+            shared_prefix_fraction=1.0,
+            n_requests=320,
+        ),
+        spec=SimpleNamespace(n_requests=320),
+        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
+        prefix_metrics_c=pm_clean,
+        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
+        topology="cross_worker",
+        prefix_metrics_a=pm_a_clean,
+        prefix_metrics_b=pm_b_no_ext,
+    )
+    expect(
+        not report_x_bad.quotable,
+        f"run_all cross no-cold-read -> NOT quotable ({report_x_bad.summary})",
+    )
+
+    # Single-worker must NOT emit the cross-only checks.
+    expect(
+        not any(
+            c.name in {"w2_cold_read", "cross_negative_control"} for c in report.checks
+        ),
+        "run_all single -> no cross-only checks",
+    )
+
+
 def _self_check() -> int:  # pragma: no cover — diagnostic harness, not the gate itself.
     import tempfile
-    from types import SimpleNamespace
+    from pathlib import Path
 
     failures = 0
 
@@ -872,157 +1252,54 @@ def _self_check() -> int:  # pragma: no cover — diagnostic harness, not the ga
 
     print("validity.py self-check (plumbing only, no numbers):")
 
-    # APC ON: synthesize a vLLM-style init line for True and False.
     apc_line_true = (
         "\x1b[0;36m(EngineCore_DP0 pid=98)\x1b[0;0m INFO 05-26 [core.py:93] Initializing ... "
         "seed=0, served_model_name=qwen3-32b, enable_prefix_caching=True, enable_chunked_prefill=True ..."
     )
-    apc_line_false = apc_line_true.replace("enable_prefix_caching=True", "enable_prefix_caching=False")
+    apc_line_false = apc_line_true.replace(
+        "enable_prefix_caching=True", "enable_prefix_caching=False"
+    )
+
     with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as f_true:
         f_true.write(apc_line_true + "\n")
         path_true = f_true.name
     with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as f_false:
         f_false.write(apc_line_false + "\n")
         path_false = f_false.name
-    expect(check_apc_on(path_true).passed, "check_apc_on True -> passed")
-    expect(not check_apc_on(path_false).passed, "check_apc_on False -> failed")
-    expect(not check_apc_on("/nonexistent/server.log").passed, "check_apc_on missing file -> failed")
 
-    # AITER parity: identical AITER subset across arms passes; a diff fails.
-    aiter = {**AITERConfig().AITER_ENV_VARS, "VLLM_USE_AITER": "1"}
-    seed = {"PYTHONHASHSEED": "0"}
-    arm_a = SimpleNamespace(arm="A", topology="single_worker", env={**aiter, **seed}, aiter_applied=True)
-    arm_b = SimpleNamespace(arm="B", topology="single_worker", env={**aiter, **seed}, aiter_applied=True)
-    arm_c = SimpleNamespace(arm="C", topology="single_worker", env={**aiter, **seed}, aiter_applied=True)
-    expect(check_aiter_parity([arm_a, arm_b, arm_c]).passed, "check_aiter_parity identical -> passed")
-    bad = SimpleNamespace(arm="B", topology="single_worker", env={**seed}, aiter_applied=False)
-    expect(not check_aiter_parity([arm_a, bad]).passed, "check_aiter_parity diff -> failed")
+    try:
+        _test_apc_on(expect, path_true, path_false)
 
-    # Seed: pinned passes; missing on cross-worker fails (required), on single-worker recommended.
-    expect(check_seed_pinned([arm_a, arm_b, arm_c]).passed, "check_seed_pinned pinned -> passed")
-    no_seed_cross = SimpleNamespace(arm="A", topology="cross_worker", env={**aiter}, aiter_applied=True)
-    chk = check_seed_pinned([no_seed_cross])
-    expect((not chk.passed) and chk.required, "check_seed_pinned cross missing -> failed+required")
-    no_seed_single = SimpleNamespace(arm="A", topology="single_worker", env={**aiter}, aiter_applied=True)
-    chk = check_seed_pinned([no_seed_single])
-    expect((not chk.passed) and (not chk.required), "check_seed_pinned single missing -> failed+recommended")
+        aiter = {**AITERConfig().AITER_ENV_VARS, "VLLM_USE_AITER": "1"}
+        seed = {"PYTHONHASHSEED": "0"}
 
-    # C control: ~0% passes, hitting fails, vacuous-0 (no queries) fails.
-    pm_clean = SimpleNamespace(hit_rate=0.0, queries_delta=300.0, hits_delta=0.0, error=None)
-    pm_hot = SimpleNamespace(hit_rate=0.42, queries_delta=300.0, hits_delta=126.0, error=None)
-    pm_vacuous = SimpleNamespace(hit_rate=0.0, queries_delta=0.0, hits_delta=0.0, error=None)
-    expect(check_c_control(pm_clean).passed, "check_c_control ~0% -> passed")
-    expect(not check_c_control(pm_hot).passed, "check_c_control hitting -> failed")
-    expect(not check_c_control(pm_vacuous).passed, "check_c_control no-queries -> failed")
+        arm_a, arm_b, arm_c = _test_aiter_parity(expect, aiter, seed)
+        _test_seed_pinned(expect, arm_a, arm_b, arm_c, aiter)
 
-    # Cross-worker w2 cold read: external hits with low local hit_rate passes; no external
-    # hits fails; external hits but a HOT local cache fails (worker-2 wasn't really cold).
-    pm_b_cold = SimpleNamespace(
-        external_hits_delta=240.0, external_kv_tokens_delta=15360.0, hit_rate=0.05, error=None
-    )
-    pm_b_no_ext = SimpleNamespace(
-        external_hits_delta=0.0, external_kv_tokens_delta=0.0, hit_rate=0.02, error=None
-    )
-    pm_b_warm = SimpleNamespace(
-        external_hits_delta=240.0, external_kv_tokens_delta=15360.0, hit_rate=0.85, error=None
-    )
-    expect(check_w2_cold_read(pm_b_cold).passed, "check_w2_cold_read external+cold -> passed")
-    expect(not check_w2_cold_read(pm_b_no_ext).passed, "check_w2_cold_read no external -> failed")
-    expect(not check_w2_cold_read(pm_b_warm).passed, "check_w2_cold_read warm local -> failed")
-    expect(not check_w2_cold_read(None).passed, "check_w2_cold_read missing -> failed")
+        pm_clean = _test_c_control(expect)
+        pm_b_cold, pm_b_no_ext = _test_w2_cold_read(expect)
+        pm_a_clean = _test_cross_negative_control(expect)
 
-    # Cross negative control (arm A, APC-only): no external hits passes; any external hits fails.
-    pm_a_clean = SimpleNamespace(external_hits_delta=0.0, external_kv_tokens_delta=0.0, error=None)
-    pm_a_leak = SimpleNamespace(external_hits_delta=12.0, external_kv_tokens_delta=192.0, error=None)
-    expect(check_cross_negative_control(pm_a_clean).passed, "check_cross_negative_control 0 ext -> passed")
-    expect(not check_cross_negative_control(pm_a_leak).passed, "check_cross_negative_control leak -> failed")
-    expect(not check_cross_negative_control(None).passed, "check_cross_negative_control missing -> failed")
+        _test_shared_prefix_single(expect)
+        _test_vram_source_honest(expect)
+        _test_n_requests(expect)
 
-    # Shared prefix single.
-    expect(check_shared_prefix_single(SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
-                                                       shared_prefix_fraction=1.0, n_requests=320)).passed,
-           "check_shared_prefix_single ==1 -> passed")
-    expect(not check_shared_prefix_single(SimpleNamespace(n_distinct_prefixes=3, canonical_prefix_hash="ab",
-                                                          shared_prefix_fraction=0.4, n_requests=320)).passed,
-           "check_shared_prefix_single >1 -> failed")
-
-    # VRAM honesty.
-    expect(check_vram_source_honest(SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi")).passed,
-           "check_vram_source_honest pyrsmi -> passed")
-    expect(not check_vram_source_honest(SimpleNamespace(vram_source="amd_default_192gb", valid=False,
-                                                        second_source=None)).passed,
-           "check_vram_source_honest 192gb default -> failed")
-
-    # N sufficient.
-    expect(check_n_requests(SimpleNamespace(n_requests=320)).passed, "check_n_requests 320 -> passed")
-    expect(not check_n_requests(SimpleNamespace(n_requests=28)).passed, "check_n_requests 28 -> failed")
-
-    # Fold: a fully-clean run is quotable.
-    report = run_all(
-        arm_launches=[arm_a, arm_b, arm_c],
-        reuse=SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
-                              shared_prefix_fraction=1.0, n_requests=320),
-        spec=SimpleNamespace(n_requests=320),
-        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
-        prefix_metrics_c=pm_clean,
-        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
-    )
-    expect(report.quotable, f"run_all clean -> quotable ({report.summary})")
-    # Fold: a run missing arm C metrics is NOT quotable.
-    report_bad = run_all(
-        arm_launches=[arm_a, arm_b, arm_c],
-        reuse=SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
-                              shared_prefix_fraction=1.0, n_requests=320),
-        spec=SimpleNamespace(n_requests=320),
-        apc_log_paths={"A": path_true},
-        prefix_metrics_c=None,
-        hbm=None,
-    )
-    expect(not report_bad.quotable, f"run_all missing-C -> NOT quotable ({report_bad.summary})")
-
-    # Fold (cross-worker): a clean two-worker run is quotable; the two cross-only required
-    # checks (w2_cold_read, cross_negative_control) appear and pass.
-    arm_a_x = SimpleNamespace(arm="A", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True)
-    arm_b_x = SimpleNamespace(arm="B", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True)
-    arm_c_x = SimpleNamespace(arm="C", topology="cross_worker", env={**aiter, **seed}, aiter_applied=True)
-    report_x = run_all(
-        arm_launches=[arm_a_x, arm_b_x, arm_c_x],
-        reuse=SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
-                              shared_prefix_fraction=1.0, n_requests=320),
-        spec=SimpleNamespace(n_requests=320),
-        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
-        prefix_metrics_c=pm_clean,
-        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
-        topology="cross_worker",
-        prefix_metrics_a=pm_a_clean,
-        prefix_metrics_b=pm_b_cold,
-    )
-    cross_names = {c.name for c in report_x.checks}
-    expect("w2_cold_read" in cross_names, "run_all cross -> w2_cold_read present")
-    expect("cross_negative_control" in cross_names, "run_all cross -> cross_negative_control present")
-    expect(report_x.quotable, f"run_all cross clean -> quotable ({report_x.summary})")
-    # Fold (cross-worker): a run where B did not cold-read (no external hits) is NOT quotable.
-    report_x_bad = run_all(
-        arm_launches=[arm_a_x, arm_b_x, arm_c_x],
-        reuse=SimpleNamespace(n_distinct_prefixes=1, canonical_prefix_hash="ab",
-                              shared_prefix_fraction=1.0, n_requests=320),
-        spec=SimpleNamespace(n_requests=320),
-        apc_log_paths={"A": path_true, "B": path_true, "C": path_true},
-        prefix_metrics_c=pm_clean,
-        hbm=SimpleNamespace(vram_source="pyrsmi", valid=True, second_source="rocm-smi"),
-        topology="cross_worker",
-        prefix_metrics_a=pm_a_clean,
-        prefix_metrics_b=pm_b_no_ext,
-    )
-    expect(not report_x_bad.quotable, f"run_all cross no-cold-read -> NOT quotable ({report_x_bad.summary})")
-    # Single-worker must NOT emit the cross-only checks.
-    expect(
-        not any(c.name in {"w2_cold_read", "cross_negative_control"} for c in report.checks),
-        "run_all single -> no cross-only checks",
-    )
-
-    Path(path_true).unlink(missing_ok=True)
-    Path(path_false).unlink(missing_ok=True)
+        _test_run_all_folds(
+            expect,
+            arm_a,
+            arm_b,
+            arm_c,
+            path_true,
+            pm_clean,
+            aiter,
+            seed,
+            pm_a_clean,
+            pm_b_cold,
+            pm_b_no_ext,
+        )
+    finally:
+        Path(path_true).unlink(missing_ok=True)
+        Path(path_false).unlink(missing_ok=True)
 
     print(f"\nself-check: {'ALL PASS' if failures == 0 else f'{failures} FAILURE(S)'}")
     return 1 if failures else 0

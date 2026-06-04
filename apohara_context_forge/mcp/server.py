@@ -29,9 +29,7 @@ from apohara_context_forge.metrics.collector import MetricsCollector
 from apohara_context_forge.models import (
     CompressionDecision,
     ContextEntry,
-    ContextMatch,
     ContextRegistration,
-    Degradation,
     MetricsSnapshot,
     OptimizedContextRequest,
 )

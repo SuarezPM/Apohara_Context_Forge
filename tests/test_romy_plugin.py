@@ -6,6 +6,8 @@ was wired AND it actually ran, not just because ``enable_quantization``
 is set in the config. Tests cover both the unwired no-op path and the
 wired-with-fakes happy path.
 """
+import logging
+
 import numpy as np
 import pytest
 
@@ -266,6 +268,19 @@ class TestPostAttentionHook:
         hook(["b1", "b2"], [], layer_idx=1, matched=True)
         result = hook(["b3"], [], layer_idx=2)
         assert result["blocks_processed_total"] == 4
+
+    def test_metrics_record_register_exception_is_caught(self, caplog):
+        """A failing metrics sink must not break the post-attention hook."""
+
+        class _BrokenMetrics:
+            def record_register(self, matched: bool):
+                raise ValueError("boom")
+
+        hook = PostAttentionHook(ROMYConfig(), metrics=_BrokenMetrics())
+        with caplog.at_level(logging.WARNING):
+            result = hook(["b0"], [], layer_idx=0, matched=True)
+        assert result["processed_blocks"] == 1
+        assert "ROMY metrics.record_register failed" in caplog.text
 
 
 # ---------------------------------------------------------------------------
