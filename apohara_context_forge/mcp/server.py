@@ -86,7 +86,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Bug fix: symmetric stop() for the VRAM monitor started above.
         stop = getattr(app.state.registry, "stop", None)
         if stop is not None:
-            await stop()
+            try:
+                await stop()
+            except Exception as exc:
+                logger.warning("registry.stop() failed: %s", exc)
         clear = getattr(app.state.registry, "clear", None)
         if clear is not None:
             try:
