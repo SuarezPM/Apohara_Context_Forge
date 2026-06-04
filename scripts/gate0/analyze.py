@@ -419,26 +419,9 @@ def _classify(delta_pct: float, metric: str) -> tuple[str, str]:
     )
 
 
-def compute_verdict(run: GateRunResult, *, primary_metric: str) -> Verdict:
-    """Compute (B-A) ± CI for the chosen primary metric and apply the cut.
-
-    ``primary_metric`` accepts either a CLI selector ('kv_footprint',
-    'throughput') or a concrete field name ('kv_used_gb', 'decode_tok_s', ...).
-
-    INDECISIVE when:
-      * validity.quotable is False, OR
-      * the primary metric is null / not-isolable / invalid on A or B.
-    The decision is ALWAYS on delta = (B-A); C is carried for the report's
-    sanity row only and never enters the cut.
-    """
-    metric = _PRIMARY_FIELD.get(primary_metric, primary_metric)
-
-    a = arm_metric(run, ARM_A, metric)
-    b = arm_metric(run, ARM_B, metric)
-    c = arm_metric(run, ARM_C, metric)
-
-    quotable = _is_quotable(run)
-
+def _check_indecisive_guards(
+    metric: str, a: ArmMetric, b: ArmMetric, c: ArmMetric, quotable: bool
+) -> Verdict | None:
     # Guard 1: validity gate. Per CONTRACT §10 / protocol §6 a non-quotable run
     # is INDECISIVE no matter what the numbers look like.
     if not quotable:
@@ -491,7 +474,7 @@ def compute_verdict(run: GateRunResult, *, primary_metric: str) -> Verdict:
             a=a,
             b=b,
             c=c,
-            delta_b_minus_a=(b.value - a.value),
+            delta_b_minus_a=(b.value - a.value) if (a.value is not None and b.value is not None) else None,
             delta_pct=None,
             delta_ci_pct=None,
             cut=CUT_INDECISIVE,
@@ -502,6 +485,35 @@ def compute_verdict(run: GateRunResult, *, primary_metric: str) -> Verdict:
             quotable=True,
         )
 
+    return None
+
+
+def compute_verdict(run: GateRunResult, *, primary_metric: str) -> Verdict:
+    """Compute (B-A) ± CI for the chosen primary metric and apply the cut.
+
+    ``primary_metric`` accepts either a CLI selector ('kv_footprint',
+    'throughput') or a concrete field name ('kv_used_gb', 'decode_tok_s', ...).
+
+    INDECISIVE when:
+      * validity.quotable is False, OR
+      * the primary metric is null / not-isolable / invalid on A or B.
+    The decision is ALWAYS on delta = (B-A); C is carried for the report's
+    sanity row only and never enters the cut.
+    """
+    metric = _PRIMARY_FIELD.get(primary_metric, primary_metric)
+
+    a = arm_metric(run, ARM_A, metric)
+    b = arm_metric(run, ARM_B, metric)
+    c = arm_metric(run, ARM_C, metric)
+
+    quotable = _is_quotable(run)
+
+    indecisive = _check_indecisive_guards(metric, a, b, c, quotable)
+    if indecisive is not None:
+        return indecisive
+
+    # We know a.value and b.value are not None because of Guard 2
+    assert a.value is not None and b.value is not None
     delta_abs = b.value - a.value
     raw_pct = delta_abs / a.value * 100.0
 
