@@ -232,6 +232,14 @@ class TestWiredWithFakeEngine:
         assert conn.retrieve(tokens=[1]) is None
         assert conn.get_stats()["retrieves_miss"] == 1
 
+    def test_lookup_failure_returns_zero_and_does_not_raise(self):
+        class _Broken:
+            def lookup(self, **_):
+                raise RuntimeError("simulated network blip")
+
+        conn = LMCacheConnectorV2(engine=_Broken())
+        assert conn.lookup(tokens=[1]) == 0
+
     def test_close_releases_engine(self):
         conn, engine = self._conn()
         conn.close()
