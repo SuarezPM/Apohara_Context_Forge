@@ -6,6 +6,7 @@ between two contexts. This is the production default for
 ``ContextRegistry.dedup``; tests inject their own fake with the same
 contract (``count_prefix_tokens``, ``find_shared_prefix``).
 """
+
 from typing import Optional
 
 from apohara_context_forge.token_counter import TokenCounter
@@ -19,11 +20,16 @@ class PrefixDedup:
         return self._tc.count(prefix)
 
     def find_shared_prefix(self, a: str, b: str) -> str:
-        n = min(len(a), len(b))
-        i = 0
-        while i < n and a[i] == b[i]:
-            i += 1
-        if i == n:
+        low = 0
+        high = min(len(a), len(b))
+        while low < high:
+            mid = (low + high + 1) // 2
+            if a.startswith(b[:mid]):
+                low = mid
+            else:
+                high = mid - 1
+        i = low
+        if i == min(len(a), len(b)):
             return a[:i]
         # Back off to the last word boundary so we don't split a token.
         j = a.rfind(" ", 0, i)

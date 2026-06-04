@@ -7,6 +7,7 @@ Replaces the old Python-loop dedup and static TTLCache with:
 
 Dependency injection - no hardcoded imports of stale modules.
 """
+
 import asyncio
 import hashlib
 import logging
@@ -36,17 +37,21 @@ VLLM_BLOCK_SIZE = 16
 @dataclass
 class SharedContextResult:
     """Result of get_shared_context() - contains reusable blocks with metadata."""
+
     agent_id: str
     shared_blocks: list[TokenBlockMatch]
     faiss_matches: list[FAISSMatch]
     total_tokens_saved: int
     reuse_confidence: float  # 0.0-1.0 weighted by hamming distance
-    offset_hints: dict[str, list[float]] = field(default_factory=dict)  # agent_id -> offset vector
+    offset_hints: dict[str, list[float]] = field(
+        default_factory=dict
+    )  # agent_id -> offset vector
 
 
 @dataclass
 class RegisteredAgent:
     """Internal record of a registered agent."""
+
     agent_id: str
     system_prompt: str
     role_prompt: str
@@ -100,7 +105,9 @@ class ContextRegistry:
             block_size=block_size,
             hamming_threshold=hamming_threshold,
         )
-        self._vram_cache = vram_cache or VRAMAwareCache(max_token_budget=vram_budget_tokens)
+        self._vram_cache = vram_cache or VRAMAwareCache(
+            max_token_budget=vram_budget_tokens
+        )
         # FAISS index dim must match the EmbeddingEngine output dimension
         # (we instantiate EmbeddingEngine with dim=512 in register_agent).
         # A 384-dim default crashes faiss.IndexFlatIP.add() at runtime —
@@ -177,19 +184,17 @@ class ContextRegistry:
 
         # Index system prompt for LSH (critical for prefix caching)
         system_block_hashes = await self._lsh.index_prompt(
-            f"{agent_id}:system",
-            system_prompt
+            f"{agent_id}:system", system_prompt
         )
 
         # Index full prompt for cross-agent dedup
-        full_block_hashes = await self._lsh.index_prompt(
-            agent_id,
-            full_context
-        )
+        full_block_hashes = await self._lsh.index_prompt(agent_id, full_context)
 
         # Generate real embedding via EmbeddingEngine (replaces pseudo-embedding)
         if self._embedding_engine is None:
-            self._embedding_engine = await EmbeddingEngine.get_instance(dim=512, use_onnx=True)
+            self._embedding_engine = await EmbeddingEngine.get_instance(
+                dim=512, use_onnx=True
+            )
         embedding = await self._embedding_engine.encode(full_context)
 
         # Update AnchorPool — use embedding as kv_offset_approx until
@@ -243,7 +248,9 @@ class ContextRegistry:
                 block_hashes=full_block_hashes,
             )
 
-        logger.debug(f"Registered agent {agent_id}, tokens={token_count}, blocks={len(full_block_hashes)}")
+        logger.debug(
+            f"Registered agent {agent_id}, tokens={token_count}, blocks={len(full_block_hashes)}"
+        )
 
         return ContextEntry(
             agent_id=agent_id,
@@ -286,9 +293,13 @@ class ContextRegistry:
 
         # Pre-initialize embedding engine to avoid race condition in gather
         if self._embedding_engine is None:
-            self._embedding_engine = await EmbeddingEngine.get_instance(dim=512, use_onnx=True)
+            self._embedding_engine = await EmbeddingEngine.get_instance(
+                dim=512, use_onnx=True
+            )
 
-        async def _process_agent(agent: RegisteredAgent) -> Optional[SharedContextResult]:
+        async def _process_agent(
+            agent: RegisteredAgent,
+        ) -> Optional[SharedContextResult]:
             # Get full context for LSH matching
             cache_key = f"context:{agent.agent_id}"
             cache_val = await self._vram_cache.get(cache_key)
@@ -374,7 +385,9 @@ class ContextRegistry:
         tasks = [_process_agent(agent) for agent in agents_to_search]
         gathered_results = await asyncio.gather(*tasks)
 
-        results: list[SharedContextResult] = [r for r in gathered_results if r is not None]
+        results: list[SharedContextResult] = [
+            r for r in gathered_results if r is not None
+        ]
 
         # Sort by reuse confidence descending
         results.sort(key=lambda r: r.reuse_confidence, reverse=True)
@@ -410,12 +423,23 @@ class ContextRegistry:
         )
 
         results: list[ContextMatch] = []
+        loop = asyncio.get_running_loop()
         for fm in faiss_matches:
             candidate_context = await self.get_agent_context(fm.agent_id)
             if candidate_context is None:
                 continue
-            shared_prefix = self._dedup.find_shared_prefix(context, candidate_context)
-            shared_prefix_tokens = self._dedup.count_prefix_tokens(shared_prefix)
+
+            # Push heavy string matching to thread pool executor to prevent blocking
+            # the async event loop since string lengths can be quite large
+            shared_prefix = await loop.run_in_executor(
+                None, self._dedup.find_shared_prefix, context, candidate_context
+            )
+
+            # count_prefix_tokens can block while tokenizing
+            shared_prefix_tokens = await loop.run_in_executor(
+                None, self._dedup.count_prefix_tokens, shared_prefix
+            )
+
             results.append(
                 ContextMatch(
                     agent_id=fm.agent_id,
@@ -514,6 +538,7 @@ class ContextRegistry:
     def _sha256_prefix(text: str) -> str:
         """SHA256 of text for prefix validation."""
         import hashlib
+
         return hashlib.sha256(text.encode()).hexdigest()
 
     @property
