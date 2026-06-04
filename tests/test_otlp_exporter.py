@@ -99,6 +99,7 @@ def test_otlp_shutdown_exception_handling(caplog):
     assert len(warnings) == 1
     assert "simulated shutdown failure" in warnings[0].message
 
+
 # ---------------------------------------------------------------------------
 # Test 4: record_inv15_decision fans out to OTLP when env var is set
 # ---------------------------------------------------------------------------
