@@ -36,6 +36,7 @@ that names a measurement.
 
 Apache-2.0 — Apohara ContextForge.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,7 +46,7 @@ import json
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -75,12 +76,8 @@ from scripts.gate0.metrics import (  # noqa: E402
     PrefixMetrics,
     ThroughputSample,
 )
-from scripts.gate0 import _lifecycle  # noqa: E402
 from scripts.gate0._lifecycle import (  # noqa: E402
-    HEALTH_POLL_S,
-    HEALTH_TIMEOUT_S,
     SETTLE_S,
-    TEARDOWN_TIMEOUT_S,
     default_ports as _default_ports,
     endpoint as _endpoint,
     launch_server as _launch_server,
@@ -125,10 +122,12 @@ class ArmResult:
     kv_footprint: Optional[KVFootprint]
     throughput: Optional[ThroughputSample]
     prefix_metrics: Optional[PrefixMetrics]
-    model_weight_gb: Optional[float]  # post-load/pre-traffic HBM baseline (KV isolation)
+    model_weight_gb: Optional[
+        float
+    ]  # post-load/pre-traffic HBM baseline (KV isolation)
     server_log_path: Optional[str]
-    inv15_fires: int                  # judge requests that took the isolated path
-    measured: bool                    # False in dry mode
+    inv15_fires: int  # judge requests that took the isolated path
+    measured: bool  # False in dry mode
 
     def to_dict(self) -> dict:
         return _result_to_dict(self)
@@ -145,7 +144,7 @@ class GateRunResult:
     reuse: ReuseStats
     conditions: dict
     arms: dict[str, ArmResult]
-    validity: Any                     # validity.ValidityReport
+    validity: Any  # validity.ValidityReport
     measured: bool
 
     def to_dict(self) -> dict:
@@ -206,7 +205,9 @@ def _drive_arm(
         warm = requests[0]
         warm_salt = salts[0].cache_salt if salts else None
         _post(endpoint, spec.model, warm.prompt, salt=warm_salt, max_tokens=4).read()
-    except Exception as e:  # warmup failure is recorded by downstream readers, not fatal
+    except (
+        Exception
+    ) as e:  # warmup failure is recorded by downstream readers, not fatal
         _log(f"arm {arm}: warmup failed (non-fatal): {e!r}")
     time.sleep(SETTLE_S)
 
@@ -366,7 +367,9 @@ def run_gate(
     if topology not in (TOPOLOGY_SINGLE, TOPOLOGY_CROSS):
         raise ValueError(f"unknown topology {topology!r}")
     if topology == TOPOLOGY_CROSS and mode == "live" and not redis_url:
-        raise ValueError("cross_worker live mode requires --redis-url (LMCache backend)")
+        raise ValueError(
+            "cross_worker live mode requires --redis-url (LMCache backend)"
+        )
 
     # Cross-worker (live AND dry) goes through the REAL two-worker path. Lazy import keeps
     # cross_worker.py free to `import harness` at module load (one-way dependency, no cycle).
@@ -391,6 +394,104 @@ def run_gate(
             gpu_memory_utilization=gpu_memory_utilization,
         )
 
+    return _run_gate_single_worker(
+        spec,
+        mode=mode,
+        device_id=device_id,
+        ports=ports,
+        vllm_bin=vllm_bin,
+        redis_url=redis_url,
+        out_path=out_path,
+        kv_cache_dtype=kv_cache_dtype,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_memory_utilization,
+    )
+
+
+def _process_arm_single_worker(
+    arm: str,
+    launch: ArmLaunch,
+    spec: WorkloadSpec,
+    requests: list[WorkloadRequest],
+    anchor_hash: str,
+    reuse: ReuseStats,
+    *,
+    topology: str,
+    port: int,
+    bin_path: Optional[str],
+    redis_url: Optional[str],
+    server_log_path: str,
+    measured: bool,
+    device_id: int,
+) -> ArmResult:
+    # 4. per-arm salts (shared planner instance across the workload so the gate_log
+    # accumulates INV-15 fires for validity to read).
+    salts = salts_for_workload(
+        arm,
+        requests,
+        anchor_hash=anchor_hash,
+        cla_group="gate0",
+        reuse_rate=reuse.shared_prefix_fraction,
+    )
+
+    if not measured:
+        # Dry: plumbing exercised, no server, no numbers.
+        return _dry_arm(
+            arm, launch, salts, topology=topology, server_log_path=server_log_path
+        )
+
+    endpoint = _endpoint(port)
+    proc: Optional[subprocess.Popen] = None
+    try:
+        extra_env = (
+            {"LMCACHE_REDIS_URL": redis_url}
+            if (redis_url and launch.uses_lmcache)
+            else None
+        )
+        proc, _ = _launch_server(
+            launch, vllm_bin=bin_path, log_path=server_log_path, extra_env=extra_env
+        )
+        if not _wait_health(proc, endpoint):
+            _log(f"arm {arm} NOT ready — recording an UNMEASURED arm and continuing")
+            return _dry_arm(
+                arm,
+                launch,
+                salts,
+                topology=topology,
+                server_log_path=server_log_path,
+            )
+        _log(f"arm {arm} READY at {endpoint}")
+        return _drive_arm(
+            arm,
+            launch,
+            spec,
+            requests,
+            salts,
+            topology=topology,
+            endpoint=endpoint,
+            device_id=device_id,
+            server_log_path=server_log_path,
+        )
+    finally:
+        if proc is not None:
+            _teardown(proc)
+            _log(f"arm {arm} torn down")
+
+
+def _run_gate_single_worker(
+    spec: WorkloadSpec,
+    *,
+    mode: str,
+    device_id: int,
+    ports: Optional[dict[str, int]],
+    vllm_bin: Optional[str],
+    redis_url: Optional[str],
+    out_path: Optional[str],
+    kv_cache_dtype: str,
+    max_model_len: int,
+    gpu_memory_utilization: float,
+) -> GateRunResult:
+    topology = TOPOLOGY_SINGLE
     ports = ports or _default_ports()
     bin_path = _vllm_bin(vllm_bin)
     measured = mode == "live"
@@ -420,58 +521,27 @@ def run_gate(
         )
         arm_launches.append(launch)
 
-        # 4. per-arm salts (shared planner instance across the workload so the gate_log
-        # accumulates INV-15 fires for validity to read).
-        salts = salts_for_workload(
-            arm,
-            requests,
-            anchor_hash=anchor_hash,
-            cla_group="gate0",
-            reuse_rate=reuse.shared_prefix_fraction,
-        )
-
         server_log_path = str(log_dir / f"{spec.name}_{topology}_{arm}_server.log")
         apc_log_paths[arm] = server_log_path
 
-        if not measured:
-            # Dry: plumbing exercised, no server, no numbers.
-            arm_results[arm] = _dry_arm(
-                arm, launch, salts, topology=topology, server_log_path=server_log_path
-            )
-            continue
-
-        endpoint = _endpoint(port)
-        proc: Optional[subprocess.Popen] = None
-        try:
-            extra_env = {"LMCACHE_REDIS_URL": redis_url} if (redis_url and launch.uses_lmcache) else None
-            proc, _ = _launch_server(
-                launch, vllm_bin=bin_path, log_path=server_log_path, extra_env=extra_env
-            )
-            if not _wait_health(proc, endpoint):
-                _log(f"arm {arm} NOT ready — recording an UNMEASURED arm and continuing")
-                arm_results[arm] = _dry_arm(
-                    arm, launch, salts, topology=topology, server_log_path=server_log_path
-                )
-                continue
-            _log(f"arm {arm} READY at {endpoint}")
-            result = _drive_arm(
-                arm,
-                launch,
-                spec,
-                requests,
-                salts,
-                topology=topology,
-                endpoint=endpoint,
-                device_id=device_id,
-                server_log_path=server_log_path,
-            )
-            arm_results[arm] = result
-            if first_hbm is None and result.kv_footprint is not None:
-                first_hbm = result.kv_footprint.hbm
-        finally:
-            if proc is not None:
-                _teardown(proc)
-                _log(f"arm {arm} torn down")
+        result = _process_arm_single_worker(
+            arm=arm,
+            launch=launch,
+            spec=spec,
+            requests=requests,
+            anchor_hash=anchor_hash,
+            reuse=reuse,
+            topology=topology,
+            port=port,
+            bin_path=bin_path,
+            redis_url=redis_url,
+            server_log_path=server_log_path,
+            measured=measured,
+            device_id=device_id,
+        )
+        arm_results[arm] = result
+        if first_hbm is None and result.kv_footprint is not None:
+            first_hbm = result.kv_footprint.hbm
 
     # Condition block — derive vram_source from the first valid HBM reading (live), else dry.
     conditions = _build_conditions(
@@ -488,7 +558,9 @@ def run_gate(
     # Validity (§6). Pass arm C's prefix metrics + a representative HBM so the gates that
     # apply in this mode can fire. Missing inputs make a check report 'not evaluable', never
     # a fabricated pass.
-    prefix_metrics_c = arm_results.get(ARM_C).prefix_metrics if ARM_C in arm_results else None
+    prefix_metrics_c = (
+        arm_results.get(ARM_C).prefix_metrics if ARM_C in arm_results else None
+    )
     validity = validity_mod.run_all(
         arm_launches=arm_launches,
         reuse=reuse,
@@ -585,27 +657,44 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--mode", choices=["dry", "live"], default="dry")
     ap.add_argument("--model", default="Qwen3-32B", help="served model name")
-    ap.add_argument("--workload", default=None, help="path to workload YAML, or empty to derive")
+    ap.add_argument(
+        "--workload", default=None, help="path to workload YAML, or empty to derive"
+    )
     ap.add_argument(
         "--topology",
         choices=[TOPOLOGY_SINGLE, TOPOLOGY_CROSS],
         default=TOPOLOGY_SINGLE,
     )
-    ap.add_argument("--n-requests", type=int, default=320, help="LARGE; protocol forbids ~28")
+    ap.add_argument(
+        "--n-requests", type=int, default=320, help="LARGE; protocol forbids ~28"
+    )
     ap.add_argument("--concurrency", type=int, default=32)
     ap.add_argument("--max-tokens", type=int, default=64)
     ap.add_argument("--device-id", type=int, default=0)
-    ap.add_argument("--redis-url", default=None, help="cross_worker only (LMCache backend)")
+    ap.add_argument(
+        "--redis-url", default=None, help="cross_worker only (LMCache backend)"
+    )
     ap.add_argument("--kv-cache-dtype", default="auto")
     ap.add_argument("--max-model-len", type=int, default=16384)
     ap.add_argument("--gpu-memory-utilization", type=float, default=0.90)
     ap.add_argument("--port-a", type=int, default=8000)
     ap.add_argument("--port-b", type=int, default=8001)
     ap.add_argument("--port-c", type=int, default=8002)
-    ap.add_argument("--port-w1", type=int, default=8021, help="cross_worker: worker-1 (store) port")
-    ap.add_argument("--port-w2", type=int, default=8022, help="cross_worker: worker-2 (cold retrieve) port")
+    ap.add_argument(
+        "--port-w1", type=int, default=8021, help="cross_worker: worker-1 (store) port"
+    )
+    ap.add_argument(
+        "--port-w2",
+        type=int,
+        default=8022,
+        help="cross_worker: worker-2 (cold retrieve) port",
+    )
     ap.add_argument("--vllm-bin", default=None)
-    ap.add_argument("--out", default=None, help="raw-log path (default logs/gate0/<name>_<topology>.json)")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="raw-log path (default logs/gate0/<name>_<topology>.json)",
+    )
     args = ap.parse_args(argv)
 
     spec = load_workload(
@@ -642,7 +731,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"quotable={quotable}"
     )
     if not result.measured:
-        _log("DRY RUN: measured=False — these numbers are plumbing only and NEVER enter the report.")
+        _log(
+            "DRY RUN: measured=False — these numbers are plumbing only and NEVER enter the report."
+        )
     return 0
 
 
