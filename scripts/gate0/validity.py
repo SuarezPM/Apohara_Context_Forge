@@ -48,7 +48,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
