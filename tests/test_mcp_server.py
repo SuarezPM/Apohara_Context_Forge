@@ -415,6 +415,57 @@ def test_lifespan_constructs_and_disposes(monkeypatch: pytest.MonkeyPatch) -> No
     assert _LifeVllm.instances and _LifeVllm.instances[-1].closed is True
 
 
+def test_lifespan_teardown_exceptions_handled(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Ensure that if stop(), clear(), or aclose() throw errors during teardown,
+    # the exceptions are swallowed and logged as warnings instead of bubbling up.
+    class _FailingLifeReg:
+        def __init__(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            raise RuntimeError("stop failure")
+
+        async def clear(self) -> None:
+            raise RuntimeError("clear failure")
+
+    class _LifeComp:
+        def __init__(self) -> None:
+            pass
+
+    class _LifeCoord:
+        def __init__(self, registry=None, compressor=None) -> None:
+            pass
+
+    class _LifeMetr:
+        def __init__(self) -> None:
+            pass
+
+    class _FailingLifeVllm:
+        def __init__(self) -> None:
+            pass
+
+        async def aclose(self) -> None:
+            raise RuntimeError("aclose failure")
+
+    monkeypatch.setattr(srv, "ContextRegistry", _FailingLifeReg)
+    monkeypatch.setattr(srv, "ContextCompressor", _LifeComp)
+    monkeypatch.setattr(srv, "CompressionCoordinator", _LifeCoord)
+    monkeypatch.setattr(srv, "MetricsCollector", _LifeMetr)
+    monkeypatch.setattr(srv, "VLLMClient", _FailingLifeVllm)
+
+    with caplog.at_level(logging.WARNING):
+        # The exit from this context block triggers lifespan teardown.
+        with TestClient(app):
+            pass
+
+    log_text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "registry.stop() failed: stop failure" in log_text
+    assert "registry.clear() failed: clear failure" in log_text
+    assert "vllm.aclose() failed: aclose failure" in log_text
+
+
 def test_full_flow_register_then_optimize_passthrough() -> None:
     # Real ContextRegistry with a hermetic FakeDedupEngine (no model download)
     # plus a stub coordinator that always returns passthrough.
