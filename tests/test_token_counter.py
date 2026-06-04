@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import patch
 
 from apohara_context_forge.token_counter import (
+    KVConfig,
     TokenCounter,
     compute_kv_gb,
     count_tokens,
@@ -37,6 +38,19 @@ def test_compute_kv_gb_with_kwargs():
     # Override layers + head_dim: 2 * 32 * 1024 * 8 * 64 * 2 = 67,108,864 B = 0.0625 GB
     gb = compute_kv_gb(1024, n_layers=32, head_dim=64)
     assert gb == 0.0625
+
+
+def test_compute_kv_config():
+    """Test compute_kv_vram_bytes with explicit KVConfig."""
+    counter = TokenCounter.get()
+    # 2 * 64 * 1024 * 8 * 128 * 2 = 268,435,456 B
+    bytes_vram = counter.compute_kv_vram_bytes(1024, config=KVConfig())
+    assert bytes_vram == 268435456
+
+    # Override: 2 * 32 * 1024 * 8 * 64 * 2 = 67,108,864 B
+    custom_config = KVConfig(n_layers=32, head_dim=64)
+    bytes_vram_custom = counter.compute_kv_vram_bytes(1024, config=custom_config)
+    assert bytes_vram_custom == 67108864
 
 
 # --- encode_tokens fallback (PR #32) ---
