@@ -118,6 +118,42 @@ class TestNoEngine:
     (the dev-laptop / HF-Space case), every method returns the
     documented null value and the connector reports inactive."""
 
+    @pytest.mark.skipif(lmcache_installed, reason="Skipping because lmcache is installed, mock doesn't work well if module is already loaded in test suite.")
+    def test_engine_build_exception_falls_back_to_noop(self, caplog):
+        from unittest.mock import MagicMock, patch
+        mock_lmcache = MagicMock()
+        mock_lmcache_config = MagicMock()
+        mock_lmcache_cache_engine = MagicMock()
+
+        mock_LMCacheEngineConfig = MagicMock()
+        mock_lmcache_config.LMCacheEngineConfig = mock_LMCacheEngineConfig
+
+        mock_LMCacheEngineBuilder = MagicMock()
+        mock_LMCacheEngineBuilder.get_or_create.side_effect = RuntimeError("Simulated build error")
+        mock_lmcache_cache_engine.LMCacheEngineBuilder = mock_LMCacheEngineBuilder
+
+        with patch.dict('sys.modules', {
+            'lmcache': mock_lmcache,
+            'lmcache.config': mock_lmcache_config,
+            'lmcache.experimental': MagicMock(),
+            'lmcache.experimental.cache_engine': mock_lmcache_cache_engine,
+        }):
+            # We must force re-import to pick up the patched sys.modules
+            # but actually LMCacheConnectorV2 does import locally inside _try_build_engine.
+            with caplog.at_level(logging.WARNING):
+                conn = LMCacheConnectorV2()
+
+            assert conn.is_active() is False
+            assert conn.backend == "fallback"
+
+            stats = conn.get_stats()
+            assert "Simulated build error" in stats["build_error"]
+            assert "RuntimeError" in stats["build_error"]
+
+            assert any(
+                "engine build failed" in record.message and "Simulated build error" in record.message
+                for record in caplog.records
+            )
     def test_is_active_false_without_engine(self, caplog):
         # Build with no engine. We expect a single WARNING (logged
         # exactly once during _try_build_engine) describing the
@@ -206,6 +242,16 @@ class TestWiredWithFakeEngine:
         assert conn.lookup(tokens=[1, 2, 3]) == 3
         assert conn.lookup(tokens=[9, 9])    == 0
 
+    def test_lookup_failure_returns_zero(self):
+        class _BrokenLookup:
+            def lookup(self, **_):
+                raise RuntimeError("simulated lookup crash")
+
+        conn = LMCacheConnectorV2(engine=_BrokenLookup())
+        assert conn.lookup(tokens=[1]) == 0
+        # Failure does not increment lookups stat
+        assert conn.get_stats()["lookups"] == 0
+
     def test_prefetch_aggregates_lookup_then_retrieve(self):
         conn, _ = self._conn(hit_for=[[1, 2]])
         results = conn.prefetch([[1, 2], [3, 4]])
@@ -232,12 +278,48 @@ class TestWiredWithFakeEngine:
         assert conn.retrieve(tokens=[1]) is None
         assert conn.get_stats()["retrieves_miss"] == 1
 
+    def test_retrieve_exception_returns_none(self):
+        class _BrokenRetrieve:
+            def retrieve(self, **_):
+                raise RuntimeError("simulated network blip in engine.retrieve")
+
+        conn = LMCacheConnectorV2(engine=_BrokenRetrieve())
+        assert conn.retrieve(tokens=[1]) is None
+        assert conn.get_stats()["retrieves_miss"] == 1
+
+    def test_retrieve_mask_any_failure_treated_as_hit(self):
+        class _BrokenMask:
+            def any(self):
+                raise RuntimeError("mask unreadable")
+
+        class _BrokenMaskEngine:
+            def retrieve(self, **_):
+                return ("kv-payload", _BrokenMask())
+
+        conn = LMCacheConnectorV2(engine=_BrokenMaskEngine())
+        result = conn.retrieve(tokens=[1])
+        assert result is not None
+        kv, mask = result
+        assert kv == "kv-payload"
+        assert conn.get_stats()["retrieves_hit"] == 1
+
     def test_close_releases_engine(self):
         conn, engine = self._conn()
         conn.close()
         assert conn.is_active() is False
         # Idempotent
         conn.close()
+
+    def test_close_failure_is_caught(self):
+        class _BrokenClose:
+            def close(self):
+                raise RuntimeError("simulated close failure")
+
+        conn = LMCacheConnectorV2(engine=_BrokenClose())
+        # Exception should be caught and logged, not raised.
+        # It still sets _active = False and _engine = None.
+        conn.close()
+        assert conn.is_active() is False
 
 
 # ---------------------------------------------------------------------------
