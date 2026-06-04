@@ -209,7 +209,10 @@ class EmbeddingEngine:
 
     def _simhash_impl(self, token_ids: tuple[int, ...]) -> int:
         """Compute 64-bit SimHash (sync, runs in executor)."""
-        v = np.zeros(64, dtype=np.float32)
+        if not token_ids:
+            return 0
+
+        hashes = []
         for tid in token_ids:
             h = int(tid)
             for _ in range(4):
@@ -217,16 +220,21 @@ class EmbeddingEngine:
                 h ^= h >> 7
                 h ^= h << 17
                 h = h & 0xFFFFFFFF
-            for bit in range(64):
-                if (h >> (bit % 32)) & 1:
-                    v[bit] += 1.0
-                else:
-                    v[bit] -= 1.0
-        bits = (v > 0).astype(np.uint8)
-        result = 0
-        for i, b in enumerate(bits):
-            result |= (int(b) << i)
-        return result
+            hashes.append(h)
+
+        hashes_arr = np.array(hashes, dtype=np.uint32)
+        n = len(hashes_arr)
+        shifts = np.arange(32, dtype=np.uint32)
+
+        bits_matrix = (hashes_arr[:, None] >> shifts[None, :]) & 1
+
+        counts = bits_matrix.astype(np.int32).sum(axis=0)
+
+        v32 = 2 * counts - n
+        bits32 = (v32 > 0).astype(np.uint8)
+
+        bits64 = np.concatenate([bits32, bits32])
+        return int.from_bytes(np.packbits(bits64, bitorder="little"), byteorder="little")
 
     async def _encode_onnx(self, text: str) -> np.ndarray:
         """Encode via Qwen3-Embedding-0.6B ONNX model (runs in executor)."""
