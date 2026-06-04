@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -70,6 +69,22 @@ def test_otlp_start_with_real_endpoint():
     exporter.shutdown()
 
 
+@pytest.mark.skipif(not _has_opentelemetry, reason="opentelemetry not installed")
+def test_otlp_start_exception_handling(caplog):
+    """When start() fails with an arbitrary Exception, it sets build_error and logs a WARNING."""
+    exporter = OTLPExporter(endpoint="localhost:4317", insecure=True)
+
+    with patch("opentelemetry.exporter.otlp.proto.grpc.metric_exporter.OTLPMetricExporter", side_effect=Exception("simulated build failure")):
+        with caplog.at_level(logging.WARNING, logger="apohara_context_forge.observability.otlp_exporter"):
+            result = exporter.start()
+
+    assert result is None
+    state = exporter.get_state()
+    assert state["active"] is False
+    assert state["build_error"] == "simulated build failure"
+    assert any("OTLPExporter failed to start: simulated build failure" in r.message for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # Test 3: shutdown() is idempotent — calling twice must not raise
 # ---------------------------------------------------------------------------
@@ -81,6 +96,24 @@ def test_otlp_shutdown_idempotent():
     exporter.shutdown()
     exporter.shutdown()
     assert not exporter.get_state()["active"]
+
+
+def test_otlp_shutdown_exception_handling(caplog):
+    """shutdown() handles provider shutdown exceptions gracefully and cleans up state."""
+    exporter = OTLPExporter(endpoint="localhost:4317")
+    exporter._active = True
+
+    mock_provider = MagicMock()
+    mock_provider.shutdown.side_effect = Exception("simulated shutdown failure")
+    exporter._provider = mock_provider
+
+    with caplog.at_level(logging.WARNING, logger="apohara_context_forge.observability.otlp_exporter"):
+        exporter.shutdown()
+
+    assert exporter.get_state()["active"] is False
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "OTLPExporter.shutdown failed:" in r.message]
+    assert len(warnings) == 1
+    assert "simulated shutdown failure" in warnings[0].message
 
 
 # ---------------------------------------------------------------------------
@@ -126,3 +159,21 @@ def test_record_inv15_decision_fans_out_to_otlp(monkeypatch):
         agent_id="test-agent", action="allow", risk_score=0.55
     )
     mock_otlp.record_lmcache_hit.assert_called_once()
+
+# ---------------------------------------------------------------------------
+# Test 5: Exception handling in record_jcr_decision
+# ---------------------------------------------------------------------------
+
+def test_record_jcr_decision_exception_handling(caplog):
+    """Test that an exception inside record_jcr_decision is caught and logged."""
+    exporter = OTLPExporter(endpoint="localhost:4317")
+    exporter._active = True
+
+    mock_counter = MagicMock()
+    mock_counter.add.side_effect = Exception("Mocked exception")
+    exporter._counters["jcr_decisions"] = mock_counter
+
+    with caplog.at_level(logging.WARNING, logger="apohara_context_forge.observability.otlp_exporter"):
+        exporter.record_jcr_decision("test-agent", "allow", 0.5)
+
+    assert "OTLPExporter.record_jcr_decision failed: Mocked exception" in caplog.text
