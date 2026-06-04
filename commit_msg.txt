@@ -1,5 +1,0 @@
-test: add test for exception handling fallback in lmcache engine build
-
-🎯 **What:** Added missing test coverage for the exception handling block in `LMCacheConnectorV2._try_build_engine` inside `apohara_context_forge/serving/lmcache_connector.py`.
-📊 **Coverage:** Mocked `sys.modules` to simulate `lmcache` being importable but the `LMCacheEngineBuilder.get_or_create` method raising a `RuntimeError`. The test validates that the connector appropriately catches the exception, logs a warning message with the correct format, correctly sets `_build_error`, falls back to the `fallback` backend, and behaves safely as a no-op instance (where `is_active()` returns False).
-✨ **Result:** Improved test reliability by verifying the graceful fallback works when engine instantiation randomly fails (e.g., due to local constraints or missing shared libraries despite the Python package existing). The full test suite continues to pass without regressions.
