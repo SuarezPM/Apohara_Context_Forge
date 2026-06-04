@@ -12,7 +12,6 @@ Important contracts:
 - Endpoints log only metadata (agent_id, lengths) — never the raw context —
   so request payloads cannot leak via stdout/stderr.
 """
-from __future__ import annotations
 
 import asyncio
 import logging
@@ -29,9 +28,7 @@ from apohara_context_forge.metrics.collector import MetricsCollector
 from apohara_context_forge.models import (
     CompressionDecision,
     ContextEntry,
-    ContextMatch,
     ContextRegistration,
-    Degradation,
     MetricsSnapshot,
     OptimizedContextRequest,
 )
