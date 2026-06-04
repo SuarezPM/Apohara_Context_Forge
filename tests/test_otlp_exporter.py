@@ -70,6 +70,22 @@ def test_otlp_start_with_real_endpoint():
     exporter.shutdown()
 
 
+@pytest.mark.skipif(not _has_opentelemetry, reason="opentelemetry not installed")
+def test_otlp_start_exception_handling(caplog):
+    """When start() fails with an arbitrary Exception, it sets build_error and logs a WARNING."""
+    exporter = OTLPExporter(endpoint="localhost:4317", insecure=True)
+
+    with patch("opentelemetry.exporter.otlp.proto.grpc.metric_exporter.OTLPMetricExporter", side_effect=Exception("simulated build failure")):
+        with caplog.at_level(logging.WARNING, logger="apohara_context_forge.observability.otlp_exporter"):
+            result = exporter.start()
+
+    assert result is None
+    state = exporter.get_state()
+    assert state["active"] is False
+    assert state["build_error"] == "simulated build failure"
+    assert any("OTLPExporter failed to start: simulated build failure" in r.message for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # Test 3: shutdown() is idempotent — calling twice must not raise
 # ---------------------------------------------------------------------------
