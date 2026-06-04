@@ -126,3 +126,21 @@ def test_record_inv15_decision_fans_out_to_otlp(monkeypatch):
         agent_id="test-agent", action="allow", risk_score=0.55
     )
     mock_otlp.record_lmcache_hit.assert_called_once()
+
+# ---------------------------------------------------------------------------
+# Test 5: Exception handling in record_jcr_decision
+# ---------------------------------------------------------------------------
+
+def test_record_jcr_decision_exception_handling(caplog):
+    """Test that an exception inside record_jcr_decision is caught and logged."""
+    exporter = OTLPExporter(endpoint="localhost:4317")
+    exporter._active = True
+
+    mock_counter = MagicMock()
+    mock_counter.add.side_effect = Exception("Mocked exception")
+    exporter._counters["jcr_decisions"] = mock_counter
+
+    with caplog.at_level(logging.WARNING, logger="apohara_context_forge.observability.otlp_exporter"):
+        exporter.record_jcr_decision("test-agent", "allow", 0.5)
+
+    assert "OTLPExporter.record_jcr_decision failed: Mocked exception" in caplog.text
