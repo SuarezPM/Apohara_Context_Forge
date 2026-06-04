@@ -79,6 +79,16 @@ class ROMYConfig:
     max_quantize_blocks: int = 1024
 
 
+@dataclass
+class QuantizationContext:
+    """Groups tensors and metadata required for RotateKV pre-RoPE quantization."""
+    block_ids: list[str]
+    layer_idx: int
+    keys: Optional[np.ndarray]
+    values: Optional[np.ndarray]
+    positions: Optional[np.ndarray]
+
+
 # ---------------------------------------------------------------------------
 # Dependency protocols                                                       #
 # ---------------------------------------------------------------------------
@@ -181,32 +191,28 @@ class PreAttentionHook:
 
     def _attempt_quantization(
         self,
-        block_ids: list[str],
-        layer_idx: int,
-        keys: Optional[np.ndarray],
-        values: Optional[np.ndarray],
-        positions: Optional[np.ndarray],
+        ctx: QuantizationContext,
     ) -> bool:
         """Attempt RotateKV pre-RoPE quantization. Returns True if applied."""
         if not (
             self._quantizer is not None
             and self._config.enable_quantization
             and self._config.quantization_mode == "rotate_kv"
-            and keys is not None
-            and values is not None
-            and positions is not None
-            and len(block_ids) <= self._config.max_quantize_blocks
+            and ctx.keys is not None
+            and ctx.values is not None
+            and ctx.positions is not None
+            and len(ctx.block_ids) <= self._config.max_quantize_blocks
         ):
             return False
 
         try:
-            self._quantizer.quantize_pre_rope(keys, values, positions)
-            self._quantized_block_count += len(block_ids)
+            self._quantizer.quantize_pre_rope(ctx.keys, ctx.values, ctx.positions)
+            self._quantized_block_count += len(ctx.block_ids)
             return True
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "ROMY quantization failed at layer %s: %s",
-                layer_idx, type(exc).__name__,
+                ctx.layer_idx, type(exc).__name__,
             )
             return False
 
@@ -268,11 +274,13 @@ class PreAttentionHook:
         # quantise. Quantization is best-effort: if it raises, we report
         # quantization_applied=False (truthful) rather than propagate.
         quantization_applied = self._attempt_quantization(
-            block_ids=block_ids,
-            layer_idx=layer_idx,
-            keys=keys,
-            values=values,
-            positions=positions,
+            ctx=QuantizationContext(
+                block_ids=block_ids,
+                layer_idx=layer_idx,
+                keys=keys,
+                values=values,
+                positions=positions,
+            )
         )
 
         result = {
