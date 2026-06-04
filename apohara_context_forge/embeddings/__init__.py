@@ -190,9 +190,7 @@ class EmbeddingEngine:
         if not texts:
             return []
 
-        results = []
-        for text in texts:
-            results.append(await self.encode(text))
+        results = list(await asyncio.gather(*(self.encode(text) for text in texts)))
         return results
 
     async def simhash(self, token_ids: list[int]) -> int:
