@@ -98,12 +98,15 @@ class VisualKVCache:
     def store(
         self,
         content_hash: str,
-        modality: str,
         embedding: np.ndarray,
-        resolution: Optional[tuple] = None,
-        encoder_model: str = "Qwen3-VL-235B-A22B-Instruct",
+        metadata: Optional[dict] = None,
     ) -> VisualEmbeddingBlock:
         """Store embedding. Triggers LFU eviction if max_vram_bytes would be exceeded."""
+        metadata = metadata or {}
+        modality = metadata.get("modality", "image")
+        resolution = metadata.get("resolution", None)
+        encoder_model = metadata.get("encoder_model", "Qwen3-VL-235B-A22B-Instruct")
+
         # Compute VRAM estimate: bytes = num_patches * hidden_dim * dtype_size
         dtype_size = embedding.dtype.itemsize if embedding.dtype.itemsize > 0 else 4
         estimated_vram_bytes = embedding.ndim * embedding.shape[-1] * dtype_size
