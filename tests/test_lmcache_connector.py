@@ -239,6 +239,20 @@ class TestWiredWithFakeEngine:
         # Idempotent
         conn.close()
 
+    def test_close_failure_logs_warning_and_continues(self, caplog):
+        class _BrokenClose:
+            def close(self):
+                raise RuntimeError("simulated close failure")
+
+        conn = LMCacheConnectorV2(engine=_BrokenClose())
+        with caplog.at_level(logging.WARNING):
+            conn.close()
+
+        assert "LMCacheConnectorV2.close" in caplog.text
+        assert "simulated close failure" in caplog.text
+        assert conn._engine is None
+        assert conn.is_active() is False
+
 
 # ---------------------------------------------------------------------------
 # Stats / introspection                                                      #
