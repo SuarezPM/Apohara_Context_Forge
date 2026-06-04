@@ -21,7 +21,6 @@ from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 
 from apohara_context_forge.config import settings
 from apohara_context_forge.compression.compressor import ContextCompressor
@@ -106,14 +105,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="ContextForge", version="0.1.0", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # Module-level globals kept for callers that import the server outside a
