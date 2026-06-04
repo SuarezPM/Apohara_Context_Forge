@@ -512,3 +512,34 @@ def test_dependency_getters_fallback() -> None:
     assert get_metrics(req) is metrics
     assert get_compressor(req) is compressor
     assert get_coordinator(req) is coordinator
+
+@pytest.mark.asyncio
+async def test_metrics_loop_exception_handling(caplog: pytest.LogCaptureFixture) -> None:
+    from unittest.mock import patch, AsyncMock
+    import asyncio
+
+    class FakeApp:
+        pass
+    class FakeState:
+        pass
+
+    app_mock = FakeApp()
+    app_mock.state = FakeState()
+
+    mock_metrics = AsyncMock()
+    mock_metrics.snapshot.side_effect = RuntimeError("Collector failed")
+    app_mock.state.metrics = mock_metrics
+
+    # Sleep succeeds first time, raises CancelledError second time to break while True loop
+    sleep_mock = AsyncMock(side_effect=[None, asyncio.CancelledError("stop loop")])
+
+    with patch("asyncio.sleep", sleep_mock):
+        import logging
+        with caplog.at_level(logging.ERROR):
+            try:
+                from apohara_context_forge.mcp import server as srv
+                await srv.metrics_loop(app_mock)
+            except asyncio.CancelledError:
+                pass
+
+    assert "Metrics collection error: Collector failed" in caplog.text
