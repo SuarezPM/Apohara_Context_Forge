@@ -66,7 +66,7 @@ class TestVisualKVCacheLookup:
         raw_bytes = b"test_image"
         content_hash = cache.compute_content_hash(raw_bytes)
         
-        cache.store(content_hash, "image", embedding, resolution=(512, 512))
+        cache.store(content_hash, embedding, metadata={"modality": "image", "resolution": (512, 512)})
         result = cache.lookup(content_hash)
         
         assert result is not None
@@ -81,7 +81,7 @@ class TestVisualKVCacheLookup:
         raw_bytes = b"test_image"
         content_hash = cache.compute_content_hash(raw_bytes)
         
-        cache.store(content_hash, "image", embedding)
+        cache.store(content_hash, embedding, metadata={"modality": "image"})
         
         # Capture access_count immediately after each lookup
         # All references point to same object, so we check the value progression
@@ -106,8 +106,8 @@ class TestVisualKVCacheLookup:
         h1 = cache.compute_content_hash(b"first")
         h2 = cache.compute_content_hash(b"second")
         
-        cache.store(h1, "image", embedding)
-        cache.store(h2, "image", embedding)
+        cache.store(h1, embedding, metadata={"modality": "image"})
+        cache.store(h2, embedding, metadata={"modality": "image"})
         
         # Access first entry
         cache.lookup(h1)
@@ -127,7 +127,7 @@ class TestVisualKVCacheStore:
         embedding = np.random.randn(100, 512).astype(np.float32)
         content_hash = cache.compute_content_hash(b"test")
         
-        result = cache.store(content_hash, "image", embedding, resolution=(512, 512))
+        result = cache.store(content_hash, embedding, metadata={"modality": "image", "resolution": (512, 512)})
         
         assert isinstance(result, VisualEmbeddingBlock)
         assert result.content_hash == content_hash
@@ -142,9 +142,8 @@ class TestVisualKVCacheStore:
         
         result = cache.store(
             cache.compute_content_hash(b"test"),
-            "image",
             embedding,
-            encoder_model="InternVL3-78B",
+            metadata={"modality": "image", "encoder_model": "InternVL3-78B"},
         )
         
         assert result.encoder_model == "InternVL3-78B"
@@ -158,9 +157,9 @@ class TestVisualKVCacheStore:
         h_aud = cache.compute_content_hash(b"audio")
         h_vid = cache.compute_content_hash(b"video")
         
-        cache.store(h_img, "image", embedding)
-        cache.store(h_aud, "audio", embedding)
-        cache.store(h_vid, "video", embedding)
+        cache.store(h_img, embedding, metadata={"modality": "image"})
+        cache.store(h_aud, embedding, metadata={"modality": "audio"})
+        cache.store(h_vid, embedding, metadata={"modality": "video"})
         
         img_block = cache.lookup(h_img)
         aud_block = cache.lookup(h_aud)
@@ -181,12 +180,12 @@ class TestVisualKVCacheStore:
         hashes = [cache.compute_content_hash(f"entry_{i}".encode()) for i in range(5)]
         
         for h in hashes[:3]:
-            cache.store(h, "image", embedding)
+            cache.store(h, embedding, metadata={"modality": "image"})
         
         assert len(cache._cache) == 3
         
         # Add 4th entry - should evict one
-        cache.store(hashes[3], "image", embedding)
+        cache.store(hashes[3], embedding, metadata={"modality": "image"})
         assert len(cache._cache) == 3
         
         # First entry should be evicted (LFU)
@@ -212,7 +211,7 @@ class TestVisualKVCacheEviction:
         stored_hashes = []
         for i in range(20):
             h = cache.compute_content_hash(f"entry_{i}".encode())
-            cache.store(h, "image", embedding)
+            cache.store(h, embedding, metadata={"modality": "image"})
             stored_hashes.append(h)
         
         # Some entries should remain
@@ -243,15 +242,15 @@ class TestQueueingControllerIntegration:
         # Store 2 entries (at minimum_stable_blocks)
         h1 = cache.compute_content_hash(b"entry1")
         h2 = cache.compute_content_hash(b"entry2")
-        cache.store(h1, "image", embedding)
-        cache.store(h2, "image", embedding)
+        cache.store(h1, embedding, metadata={"modality": "image"})
+        cache.store(h2, embedding, metadata={"modality": "image"})
         
         # Try to add 3rd - eviction should be skipped due to minimum_stable_blocks
         # The cache will still have 2 entries (or possibly 3 if no eviction happens)
         # But we should not evict below minimum_stable_blocks
         
         h3 = cache.compute_content_hash(b"entry3")
-        cache.store(h3, "image", embedding)
+        cache.store(h3, embedding, metadata={"modality": "image"})
         
         # Both original entries should still be accessible
         # (eviction was skipped)
@@ -271,7 +270,7 @@ class TestQueueingControllerIntegration:
         
         hashes = [cache.compute_content_hash(f"entry_{i}".encode()) for i in range(5)]
         for h in hashes:
-            cache.store(h, "image", embedding)
+            cache.store(h, embedding, metadata={"modality": "image"})
         
         # Should have evicted some entries
         assert len(cache._cache) <= 3
@@ -368,7 +367,7 @@ class TestCacheStats:
         
         # Hit
         h = cache.compute_content_hash(b"test")
-        cache.store(h, "image", embedding)
+        cache.store(h, embedding, metadata={"modality": "image"})
         cache.lookup(h)
         
         stats = cache.get_cache_stats()
@@ -383,7 +382,7 @@ class TestCacheStats:
         embedding = np.random.randn(100, 512).astype(np.float32)
         
         h = cache.compute_content_hash(b"test")
-        cache.store(h, "image", embedding)
+        cache.store(h, embedding, metadata={"modality": "image"})
         
         # Multiple hits should accumulate vram_saved
         cache.lookup(h)
@@ -400,7 +399,7 @@ class TestCacheStats:
         embedding = np.random.randn(100, 512).astype(np.float32)
         
         for i in range(5):
-            cache.store(cache.compute_content_hash(f"entry_{i}".encode()), "image", embedding)
+            cache.store(cache.compute_content_hash(f"entry_{i}".encode()), embedding, metadata={"modality": "image"})
         
         stats = cache.get_cache_stats()
         assert stats["visual_cache_entries"] == 5
@@ -415,7 +414,7 @@ class TestClear:
         embedding = np.random.randn(100, 512).astype(np.float32)
         
         h = cache.compute_content_hash(b"test")
-        cache.store(h, "image", embedding)
+        cache.store(h, embedding, metadata={"modality": "image"})
         cache.lookup(h)
         cache.get_dp_mode_recommendation(batch_image_count=5)
         
