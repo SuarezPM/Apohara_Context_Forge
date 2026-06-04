@@ -206,6 +206,16 @@ class TestWiredWithFakeEngine:
         assert conn.lookup(tokens=[1, 2, 3]) == 3
         assert conn.lookup(tokens=[9, 9])    == 0
 
+    def test_lookup_failure_returns_zero(self):
+        class _BrokenLookup:
+            def lookup(self, **_):
+                raise RuntimeError("simulated lookup crash")
+
+        conn = LMCacheConnectorV2(engine=_BrokenLookup())
+        assert conn.lookup(tokens=[1]) == 0
+        # Failure does not increment lookups stat
+        assert conn.get_stats()["lookups"] == 0
+
     def test_prefetch_aggregates_lookup_then_retrieve(self):
         conn, _ = self._conn(hit_for=[[1, 2]])
         results = conn.prefetch([[1, 2], [3, 4]])
@@ -232,12 +242,48 @@ class TestWiredWithFakeEngine:
         assert conn.retrieve(tokens=[1]) is None
         assert conn.get_stats()["retrieves_miss"] == 1
 
+    def test_retrieve_exception_returns_none(self):
+        class _BrokenRetrieve:
+            def retrieve(self, **_):
+                raise RuntimeError("simulated network blip in engine.retrieve")
+
+        conn = LMCacheConnectorV2(engine=_BrokenRetrieve())
+        assert conn.retrieve(tokens=[1]) is None
+        assert conn.get_stats()["retrieves_miss"] == 1
+
+    def test_retrieve_mask_any_failure_treated_as_hit(self):
+        class _BrokenMask:
+            def any(self):
+                raise RuntimeError("mask unreadable")
+
+        class _BrokenMaskEngine:
+            def retrieve(self, **_):
+                return ("kv-payload", _BrokenMask())
+
+        conn = LMCacheConnectorV2(engine=_BrokenMaskEngine())
+        result = conn.retrieve(tokens=[1])
+        assert result is not None
+        kv, mask = result
+        assert kv == "kv-payload"
+        assert conn.get_stats()["retrieves_hit"] == 1
+
     def test_close_releases_engine(self):
         conn, engine = self._conn()
         conn.close()
         assert conn.is_active() is False
         # Idempotent
         conn.close()
+
+    def test_close_failure_is_caught(self):
+        class _BrokenClose:
+            def close(self):
+                raise RuntimeError("simulated close failure")
+
+        conn = LMCacheConnectorV2(engine=_BrokenClose())
+        # Exception should be caught and logged, not raised.
+        # It still sets _active = False and _engine = None.
+        conn.close()
+        assert conn.is_active() is False
 
 
 # ---------------------------------------------------------------------------
