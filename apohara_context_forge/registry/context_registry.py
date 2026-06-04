@@ -176,7 +176,7 @@ class ContextRegistry:
         token_count = len(token_ids)
 
         # Index system prompt for LSH (critical for prefix caching)
-        system_block_hashes = await self._lsh.index_prompt(
+        await self._lsh.index_prompt(
             f"{agent_id}:system",
             system_prompt
         )
@@ -409,21 +409,23 @@ class ContextRegistry:
             embedding.tolist(), k=5, threshold=threshold
         )
 
-        results: list[ContextMatch] = []
-        for fm in faiss_matches:
+        async def _process_match(fm) -> Optional[ContextMatch]:
             candidate_context = await self.get_agent_context(fm.agent_id)
             if candidate_context is None:
-                continue
+                return None
             shared_prefix = self._dedup.find_shared_prefix(context, candidate_context)
             shared_prefix_tokens = self._dedup.count_prefix_tokens(shared_prefix)
-            results.append(
-                ContextMatch(
-                    agent_id=fm.agent_id,
-                    similarity=fm.similarity,
-                    shared_prefix=shared_prefix,
-                    shared_prefix_tokens=shared_prefix_tokens,
-                )
+            return ContextMatch(
+                agent_id=fm.agent_id,
+                similarity=fm.similarity,
+                shared_prefix=shared_prefix,
+                shared_prefix_tokens=shared_prefix_tokens,
             )
+
+        tasks = [_process_match(fm) for fm in faiss_matches]
+        gathered_results = await asyncio.gather(*tasks)
+
+        results: list[ContextMatch] = [r for r in gathered_results if r is not None]
 
         results.sort(key=lambda m: m.similarity, reverse=True)
         return results
@@ -513,7 +515,6 @@ class ContextRegistry:
     @staticmethod
     def _sha256_prefix(text: str) -> str:
         """SHA256 of text for prefix validation."""
-        import hashlib
         return hashlib.sha256(text.encode()).hexdigest()
 
     @property
