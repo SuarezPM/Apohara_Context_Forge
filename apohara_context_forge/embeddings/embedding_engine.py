@@ -192,7 +192,7 @@ class EmbeddingEngine:
         """
         if not texts:
             return []
-        return [await self.encode(t) for t in texts]
+        return list(await asyncio.gather(*(self.encode(text) for text in texts)))
 
     async def simhash(self, token_ids: list[int]) -> int:
         """
