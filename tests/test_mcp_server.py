@@ -365,8 +365,16 @@ def test_lifespan_constructs_and_disposes(monkeypatch: pytest.MonkeyPatch) -> No
         instances: list = []
 
         def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
             self.cleared = False
             type(self).instances.append(self)
+
+        async def start(self) -> None:
+            self.started = True
+
+        async def stop(self) -> None:
+            self.stopped = True
 
         async def clear(self) -> None:
             self.cleared = True
@@ -409,10 +417,68 @@ def test_lifespan_constructs_and_disposes(monkeypatch: pytest.MonkeyPatch) -> No
         # Coordinator must be wired to the SAME registry+compressor instances
         assert client.app.state.coordinator.registry is client.app.state.registry
         assert client.app.state.coordinator.compressor is client.app.state.compressor
+        # start() should have run when entering context
+        assert client.app.state.registry.started is True
 
     # On context exit the lifespan ran cleanup
+    assert _LifeReg.instances and _LifeReg.instances[-1].stopped is True
     assert _LifeReg.instances and _LifeReg.instances[-1].cleared is True
     assert _LifeVllm.instances and _LifeVllm.instances[-1].closed is True
+
+
+def test_lifespan_teardown_handles_exceptions(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Test that if the resources fail to tear down, the exceptions are caught
+    # and logged, preventing a crash during shutdown.
+
+    class _LifeRegFail:
+        def __init__(self) -> None:
+            pass
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            raise RuntimeError("stop boom")
+
+        async def clear(self) -> None:
+            raise RuntimeError("clear boom")
+
+    class _LifeCompFail:
+        def __init__(self) -> None:
+            pass
+
+    class _LifeCoordFail:
+        def __init__(self, registry=None, compressor=None) -> None:
+            self.registry = registry
+            self.compressor = compressor
+
+    class _LifeMetrFail:
+        def __init__(self) -> None:
+            pass
+
+    class _LifeVllmFail:
+        def __init__(self) -> None:
+            pass
+
+        async def aclose(self) -> None:
+            raise RuntimeError("aclose boom")
+
+    monkeypatch.setattr(srv, "ContextRegistry", _LifeRegFail)
+    monkeypatch.setattr(srv, "ContextCompressor", _LifeCompFail)
+    monkeypatch.setattr(srv, "CompressionCoordinator", _LifeCoordFail)
+    monkeypatch.setattr(srv, "MetricsCollector", _LifeMetrFail)
+    monkeypatch.setattr(srv, "VLLMClient", _LifeVllmFail)
+
+    with caplog.at_level(logging.WARNING):
+        with TestClient(app):
+            pass
+
+    logs = caplog.text
+    assert "registry.stop() failed: stop boom" in logs
+    assert "registry.clear() failed: clear boom" in logs
+    assert "vllm.aclose() failed: aclose boom" in logs
 
 
 def test_full_flow_register_then_optimize_passthrough() -> None:
