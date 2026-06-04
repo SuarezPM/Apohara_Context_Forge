@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -82,6 +81,23 @@ def test_otlp_shutdown_idempotent():
     exporter.shutdown()
     assert not exporter.get_state()["active"]
 
+
+def test_otlp_shutdown_exception_handling(caplog):
+    """shutdown() handles provider shutdown exceptions gracefully and cleans up state."""
+    exporter = OTLPExporter(endpoint="localhost:4317")
+    exporter._active = True
+
+    mock_provider = MagicMock()
+    mock_provider.shutdown.side_effect = Exception("simulated shutdown failure")
+    exporter._provider = mock_provider
+
+    with caplog.at_level(logging.WARNING, logger="apohara_context_forge.observability.otlp_exporter"):
+        exporter.shutdown()
+
+    assert exporter.get_state()["active"] is False
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "OTLPExporter.shutdown failed:" in r.message]
+    assert len(warnings) == 1
+    assert "simulated shutdown failure" in warnings[0].message
 
 # ---------------------------------------------------------------------------
 # Test 4: record_inv15_decision fans out to OTLP when env var is set
