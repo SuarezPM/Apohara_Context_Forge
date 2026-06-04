@@ -1,0 +1,26 @@
+{
+  "with_fwht": {
+    "use_fwht": true,
+    "device": "cuda",
+    "seq_len": 32768,
+    "num_heads": 32,
+    "head_dim": 128,
+    "baseline_fp16_bytes": 536870912,
+    "packed_bytes": 151060480,
+    "reduction_factor": 3.5540130151843816,
+    "peak_gpu_alloc_bytes_incl_copy": 537133056,
+    "duration_ms": 84036.66486999998
+  },
+  "without_fwht": {
+    "use_fwht": false,
+    "device": "cuda",
+    "seq_len": 32768,
+    "num_heads": 32,
+    "head_dim": 128,
+    "baseline_fp16_bytes": 536870912,
+    "packed_bytes": 151060480,
+    "reduction_factor": 3.5540130151843816,
+    "peak_gpu_alloc_bytes_incl_copy": 537133056,
+    "duration_ms": 73237.01495699993
+  }
+}

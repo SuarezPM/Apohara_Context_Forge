@@ -1,0 +1,106 @@
+{
+  "model": "Qwen/Qwen3-1.7B",
+  "endpoint": "http://127.0.0.1:8034",
+  "footprint": {
+    "hbm": {
+      "used_gb": 7.265,
+      "total_gb": 8.0,
+      "vram_source": "cuda_nvml",
+      "second_source_used_gb": 6.869,
+      "second_source": "nvidia-smi"
+    }
+  },
+  "vram_prefix": {
+    "shared": {
+      "queries_delta": 3229.0,
+      "hits_delta": 2736.0,
+      "hit_rate": 0.8473,
+      "hbm": {
+        "used_gb": 7.265,
+        "total_gb": 8.0,
+        "vram_source": "cuda_nvml",
+        "second_source_used_gb": 6.869,
+        "second_source": "nvidia-smi"
+      }
+    },
+    "isolated": {
+      "queries_delta": 3229.0,
+      "hits_delta": 0.0,
+      "hit_rate": 0.0,
+      "hbm": {
+        "used_gb": 7.265,
+        "total_gb": 8.0,
+        "vram_source": "cuda_nvml",
+        "second_source_used_gb": 6.869,
+        "second_source": "nvidia-smi"
+      }
+    },
+    "mechanism_proven": true
+  },
+  "concurrency": {
+    "levels": [
+      {
+        "concurrency": 1,
+        "completed": 1,
+        "wall_s": 0.25,
+        "hbm_used_gb": 7.265,
+        "vram_source": "cuda_nvml"
+      },
+      {
+        "concurrency": 2,
+        "completed": 2,
+        "wall_s": 0.23,
+        "hbm_used_gb": 7.267,
+        "vram_source": "cuda_nvml"
+      },
+      {
+        "concurrency": 4,
+        "completed": 4,
+        "wall_s": 0.22,
+        "hbm_used_gb": 7.267,
+        "vram_source": "cuda_nvml"
+      },
+      {
+        "concurrency": 8,
+        "completed": 8,
+        "wall_s": 0.23,
+        "hbm_used_gb": 7.269,
+        "vram_source": "cuda_nvml"
+      },
+      {
+        "concurrency": 16,
+        "completed": 16,
+        "wall_s": 0.45,
+        "hbm_used_gb": 7.269,
+        "vram_source": "cuda_nvml"
+      },
+      {
+        "concurrency": 32,
+        "completed": 32,
+        "wall_s": 0.91,
+        "hbm_used_gb": 7.269,
+        "vram_source": "cuda_nvml"
+      },
+      {
+        "concurrency": 64,
+        "completed": 64,
+        "wall_s": 1.91,
+        "hbm_used_gb": 7.269,
+        "vram_source": "cuda_nvml"
+      }
+    ],
+    "max_sustained_concurrency": 64
+  },
+  "throughput": {
+    "shared_prefix": {
+      "mean_ttft_s": 0.0397,
+      "approx_decode_tok_s": 160.3,
+      "n": 5
+    },
+    "distinct_prefix": {
+      "mean_ttft_s": 0.072,
+      "approx_decode_tok_s": 154.6,
+      "n": 5
+    }
+  }
+}

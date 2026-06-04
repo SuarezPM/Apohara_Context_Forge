@@ -1,0 +1,48 @@
+{
+  "hardware": "rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF",
+  "shape": [
+    1,
+    16384,
+    32,
+    128
+  ],
+  "configs": [
+    {
+      "name": "fp16 (reference)",
+      "packed_bytes": 268435456,
+      "reduction_factor": 1.0,
+      "mse_keys": 4.313852741688606e-08,
+      "mse_values": 4.313385915111212e-08,
+      "max_abs_err_keys": 0.001953125
+    },
+    {
+      "name": "int8 naive (per-channel min-max)",
+      "packed_bytes": 142606336,
+      "reduction_factor": 1.8823529411764706,
+      "mse_keys": 3.440583168412559e-05,
+      "mse_values": 3.443353489274159e-05,
+      "max_abs_err_keys": 0.017274826765060425,
+      "duration_ms": 866.1812469999859
+    },
+    {
+      "name": "int4 Apohara use_fwht=False",
+      "use_fwht": false,
+      "packed_bytes": 75563008,
+      "reduction_factor": 3.552471812662619,
+      "mse_keys": 0.010094083845615387,
+      "mse_values": 0.010102703236043453,
+      "max_abs_err_keys": 0.32507720589637756,
+      "duration_ms": 76689.13170699989
+    },
+    {
+      "name": "int4 Apohara use_fwht=True",
+      "use_fwht": true,
+      "packed_bytes": 75563008,
+      "reduction_factor": 3.552471812662619,
+      "mse_keys": 2.010232448577881,
+      "mse_values": 2.010484218597412,
+      "max_abs_err_keys": 8.489429473876953,
+      "duration_ms": 81646.73212499975
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "model": "qwen3-32b",
+  "endpoint": "http://127.0.0.1:8004",
+  "footprint": {
+    "hbm": {
+      "used_gb": 175.256,
+      "total_gb": 191.688,
+      "vram_source": "pyrsmi",
+      "second_source_used_gb": 175.256,
+      "second_source": "rocm-smi"
+    }
+  },
+  "vram_prefix": {
+    "shared": {
+      "queries_delta": 3229.0,
+      "hits_delta": 2736.0,
+      "hit_rate": 0.8473,
+      "hbm": {
+        "used_gb": 175.393,
+        "total_gb": 191.688,
+        "vram_source": "pyrsmi",
+        "second_source_used_gb": 175.393,
+        "second_source": "rocm-smi"
+      }
+    },
+    "isolated": {
+      "queries_delta": 3229.0,
+      "hits_delta": 0.0,
+      "hit_rate": 0.0,
+      "hbm": {
+        "used_gb": 175.393,
+        "total_gb": 191.688,
+        "vram_source": "pyrsmi",
+        "second_source_used_gb": 175.393,
+        "second_source": "rocm-smi"
+      }
+    },
+    "mechanism_proven": true
+  },
+  "concurrency": {
+    "levels": [
+      {
+        "concurrency": 1,
+        "completed": 1,
+        "wall_s": 0.41,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      },
+      {
+        "concurrency": 2,
+        "completed": 2,
+        "wall_s": 0.36,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      },
+      {
+        "concurrency": 4,
+        "completed": 4,
+        "wall_s": 0.68,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      },
+      {
+        "concurrency": 8,
+        "completed": 8,
+        "wall_s": 0.41,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      },
+      {
+        "concurrency": 16,
+        "completed": 16,
+        "wall_s": 0.45,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      },
+      {
+        "concurrency": 32,
+        "completed": 32,
+        "wall_s": 0.58,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      },
+      {
+        "concurrency": 64,
+        "completed": 64,
+        "wall_s": 0.71,
+        "hbm_used_gb": 175.393,
+        "vram_source": "pyrsmi"
+      }
+    ],
+    "max_sustained_concurrency": 64
+  },
+  "throughput": {
+    "shared_prefix": {
+      "mean_ttft_s": 0.0581,
+      "approx_decode_tok_s": 107.5,
+      "n": 5
+    },
+    "distinct_prefix": {
+      "mean_ttft_s": 0.1349,
+      "approx_decode_tok_s": 100.8,
+      "n": 5
+    }
+  }
+}

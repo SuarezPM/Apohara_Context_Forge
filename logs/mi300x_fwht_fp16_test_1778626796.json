@@ -1,0 +1,293 @@
+{
+  "hardware": "rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF",
+  "results": [
+    {
+      "config": "s4096_h32_d64",
+      "fp32_ref": {
+        "duration_ms": 16.02854000066145,
+        "peak_alloc_bytes": 150994944,
+        "overhead_pct": 800.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 4.011281999737548,
+        "peak_alloc_bytes": 67108864,
+        "overhead_pct": 300.0
+      },
+      "speedup_x": 3.9958646641423297,
+      "precision_max_diff": 0.00390625,
+      "precision_mse": 3.4317875474698667e-07
+    },
+    {
+      "config": "s4096_h32_d128",
+      "fp32_ref": {
+        "duration_ms": 1.2898570003017085,
+        "peak_alloc_bytes": 335544320,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 0.8146359996317187,
+        "peak_alloc_bytes": 150994944,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 1.58335379345478,
+      "precision_max_diff": 0.005859375,
+      "precision_mse": 4.3675012761923426e-07
+    },
+    {
+      "config": "s4096_h32_d256",
+      "fp32_ref": {
+        "duration_ms": 2.574954000010621,
+        "peak_alloc_bytes": 671088640,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 1.5673709995098761,
+        "peak_alloc_bytes": 301989888,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 1.6428490770952253,
+      "precision_max_diff": 0.0048828125,
+      "precision_mse": 4.4329055981506826e-07
+    },
+    {
+      "config": "s4096_h64_d64",
+      "fp32_ref": {
+        "duration_ms": 1.0419359996376443,
+        "peak_alloc_bytes": 436207616,
+        "overhead_pct": 1200.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 0.7276400001501315,
+        "peak_alloc_bytes": 201326592,
+        "overhead_pct": 500.0
+      },
+      "speedup_x": 1.4319388700767757,
+      "precision_max_diff": 0.00390625,
+      "precision_mse": 3.435224016357097e-07
+    },
+    {
+      "config": "s4096_h64_d128",
+      "fp32_ref": {
+        "duration_ms": 2.3137369998949,
+        "peak_alloc_bytes": 671088640,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 1.4874150001560338,
+        "peak_alloc_bytes": 301989888,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 1.5555423332776546,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 4.3689425410775584e-07
+    },
+    {
+      "config": "s4096_h64_d256",
+      "fp32_ref": {
+        "duration_ms": 5.750124999394757,
+        "peak_alloc_bytes": 1342177280,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 2.9190550003477256,
+        "peak_alloc_bytes": 603979776,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 1.969858395511488,
+      "precision_max_diff": 0.005859375,
+      "precision_mse": 4.4336991322779795e-07
+    },
+    {
+      "config": "s16384_h32_d64",
+      "fp32_ref": {
+        "duration_ms": 2.0335879999038298,
+        "peak_alloc_bytes": 872415232,
+        "overhead_pct": 1200.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 1.3154110001778463,
+        "peak_alloc_bytes": 402653184,
+        "overhead_pct": 500.0
+      },
+      "speedup_x": 1.5459715629783273,
+      "precision_max_diff": 0.0045166015625,
+      "precision_mse": 3.4312338925701624e-07
+    },
+    {
+      "config": "s16384_h32_d128",
+      "fp32_ref": {
+        "duration_ms": 5.1289610000821995,
+        "peak_alloc_bytes": 1342177280,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 2.655225000125938,
+        "peak_alloc_bytes": 603979776,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 1.9316483536570088,
+      "precision_max_diff": 0.005859375,
+      "precision_mse": 4.367730639387446e-07
+    },
+    {
+      "config": "s16384_h32_d256",
+      "fp32_ref": {
+        "duration_ms": 11.347964999913529,
+        "peak_alloc_bytes": 2684354560,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 5.358642999453878,
+        "peak_alloc_bytes": 1207959552,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.1176937894668573,
+      "precision_max_diff": 0.0048828125,
+      "precision_mse": 4.4352714212436695e-07
+    },
+    {
+      "config": "s16384_h64_d64",
+      "fp32_ref": {
+        "duration_ms": 4.536866999842459,
+        "peak_alloc_bytes": 1744830464,
+        "overhead_pct": 1200.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 2.484308999555651,
+        "peak_alloc_bytes": 805306368,
+        "overhead_pct": 500.0
+      },
+      "speedup_x": 1.8262088172823643,
+      "precision_max_diff": 0.0048828125,
+      "precision_mse": 3.4350890132373024e-07
+    },
+    {
+      "config": "s16384_h64_d128",
+      "fp32_ref": {
+        "duration_ms": 10.545790999458404,
+        "peak_alloc_bytes": 2684354560,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 4.76341100056743,
+        "peak_alloc_bytes": 1207959552,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.213915825907561,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 4.368951351807482e-07
+    },
+    {
+      "config": "s16384_h64_d256",
+      "fp32_ref": {
+        "duration_ms": 22.875253999700362,
+        "peak_alloc_bytes": 5368709120,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 10.835287999725551,
+        "peak_alloc_bytes": 2415919104,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.111180985708896,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 4.436620031356142e-07
+    },
+    {
+      "config": "s32768_h32_d64",
+      "fp32_ref": {
+        "duration_ms": 4.53013500009547,
+        "peak_alloc_bytes": 2281701376,
+        "overhead_pct": 1600.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 2.461537999806751,
+        "peak_alloc_bytes": 1073741824,
+        "overhead_pct": 700.0
+      },
+      "speedup_x": 1.8403676890022087,
+      "precision_max_diff": 0.0040283203125,
+      "precision_mse": 3.433267750097002e-07
+    },
+    {
+      "config": "s32768_h32_d128",
+      "fp32_ref": {
+        "duration_ms": 10.527903999900445,
+        "peak_alloc_bytes": 2684354560,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 4.822580999643833,
+        "peak_alloc_bytes": 1207959552,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.1830434783112973,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 4.366869745808799e-07
+    },
+    {
+      "config": "s32768_h32_d256",
+      "fp32_ref": {
+        "duration_ms": 23.312882000027457,
+        "peak_alloc_bytes": 5368709120,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 10.877217000597739,
+        "peak_alloc_bytes": 2415919104,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.1432763544890516,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 4.4350423422656604e-07
+    },
+    {
+      "config": "s32768_h64_d64",
+      "fp32_ref": {
+        "duration_ms": 9.26949600034277,
+        "peak_alloc_bytes": 3489660928,
+        "overhead_pct": 1200.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 4.276112000297871,
+        "peak_alloc_bytes": 1610612736,
+        "overhead_pct": 500.0
+      },
+      "speedup_x": 2.167739292071176,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 3.4340158094892104e-07
+    },
+    {
+      "config": "s32768_h64_d128",
+      "fp32_ref": {
+        "duration_ms": 21.020624999437132,
+        "peak_alloc_bytes": 5368709120,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 10.1120709996394,
+        "peak_alloc_bytes": 2415919104,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.0787655664390345,
+      "precision_max_diff": 0.0078125,
+      "precision_mse": 4.3686193862413347e-07
+    },
+    {
+      "config": "s32768_h64_d256",
+      "fp32_ref": {
+        "duration_ms": 45.77388599955157,
+        "peak_alloc_bytes": 10737418240,
+        "overhead_pct": 900.0
+      },
+      "fp16_inplace": {
+        "duration_ms": 21.928809000201,
+        "peak_alloc_bytes": 4831838208,
+        "overhead_pct": 350.0
+      },
+      "speedup_x": 2.087385867564992,
+      "precision_max_diff": 0.005859375,
+      "precision_mse": 4.435918867784494e-07
+    }
+  ]
+}

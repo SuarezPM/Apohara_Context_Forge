@@ -1,0 +1,40 @@
+{
+  "hardware": "rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF",
+  "measurements": [
+    {
+      "size_gb": 1.0,
+      "iters": 5,
+      "copy_duration_ms": 0.6849119999969844,
+      "copy_bw_gbps": 2920.083163981367,
+      "triad_duration_ms": 2.3920915999042336,
+      "triad_bw_gbps": 1254.1325759097617
+    },
+    {
+      "size_gb": 4.0,
+      "iters": 5,
+      "copy_duration_ms": 2.1084795997012407,
+      "copy_bw_gbps": 3794.203178979561,
+      "triad_duration_ms": 3.3122312001069076,
+      "triad_bw_gbps": 3622.935500279292
+    },
+    {
+      "size_gb": 16.0,
+      "iters": 5,
+      "copy_duration_ms": 8.597796600224683,
+      "copy_bw_gbps": 3721.8838137161506,
+      "triad_duration_ms": 13.433226399502018,
+      "triad_bw_gbps": 3573.2294366585975
+    },
+    {
+      "size_gb": 64.0,
+      "iters": 5,
+      "copy_duration_ms": 34.525091399700614,
+      "copy_bw_gbps": 3707.4485485970345,
+      "triad_duration_ms": 53.28836960034096,
+      "triad_bw_gbps": 3603.037612897271
+    }
+  ],
+  "peak_advertised_tbps": 5.3,
+  "best_measured_triad_gbps": 3622.935500279292,
+  "efficiency_pct": 68.35727359017531
+}

@@ -1,0 +1,56 @@
+[04:44:37] === PREFLIGHT ===
+GPU[0]		: Card Series: 		AMD Instinct MI300X VF
+[04:44:37] image rocm/vllm:latest present
+host repo deps OK
+[04:44:37] pyrsmi OK (device-wide HBM)
+[04:44:37] results branch: mi300x-evidence (push=on)
+[04:44:38] === MODEL coder-next (img=rocm/vllm:latest kv=fp8 maxlen=16384) ===
+[04:48:15] container EXITED — logs:
+[04:48:15] coder-next NOT ready — recording blocker, skipping
+[04:48:16] pushed logs -> mi300x-evidence (coder-next BLOCKED)
+[04:48:16] === MODEL qwen35-122b (img=rocm/vllm:latest kv=fp8 maxlen=16384) ===
+[04:48:32] container EXITED — logs:
+[04:48:32] qwen35-122b NOT ready — recording blocker, skipping
+[04:48:33] pushed logs -> mi300x-evidence (qwen35-122b BLOCKED)
+[04:48:33] === MODEL qwen36-35b (img=rocm/vllm:latest kv=auto maxlen=16384) ===
+[04:48:48] container EXITED — logs:
+[04:48:48] qwen36-35b NOT ready — recording blocker, skipping
+[04:48:49] pushed logs -> mi300x-evidence (qwen36-35b BLOCKED)
+[04:48:49] === MODEL qwen3-32b (img=rocm/vllm:latest kv=auto maxlen=16384) ===
+[04:52:38] qwen3-32b READY
+    },
+    "distinct_prefix": {
+      "mean_ttft_s": 0.1349,
+      "approx_decode_tok_s": 100.8,
+      "n": 5
+    }
+  }
+}
+[04:53:08] pushed logs -> mi300x-evidence (qwen3-32b measure)
+WARNING:apohara_context_forge.embeddings.embedding_engine:EmbeddingEngine: qwen3-embed ONNX model unavailable. Falling back to xorshift pseudo-embeddings (V3 compatibility). VRAM savings and semantic match quality will be reduced.
+retriever   strat=error                tok 0->0 (0% saved) srv_tok 1051->1051 use_dense=False base=2278ms cf=1322ms
+reranker    strat=error                tok 0->0 (0% saved) srv_tok 1050->1050 use_dense=False base=1320ms cf=1319ms
+summarizer  strat=error                tok 0->0 (0% saved) srv_tok 1044->1044 use_dense=False base=1313ms cf=1328ms
+critic      strat=error                tok 0->0 (0% saved) srv_tok 1063->1063 use_dense=True base=1317ms cf=1254ms
+responder   strat=error                tok 0->0 (0% saved) srv_tok 1052->1052 use_dense=False base=1325ms cf=1325ms
+
+E2E_DONE model=qwen3-32b server_savings=0.0% baseline_tok=5260 cf_tok=5260 inv15_fires=1 ledger_verify_exit=0 certs=5
+[04:53:30] pushed logs -> mi300x-evidence (qwen3-32b tokens)
+len~ 128000 depth=0.1 prompt_tok=      0 found=False t=0.39s ERR
+len~ 128000 depth=0.5 prompt_tok=      0 found=False t=0.4s ERR
+len~ 128000 depth=0.9 prompt_tok=      0 found=False t=0.38s ERR
+len~ 190000 depth=0.1 prompt_tok=      0 found=False t=0.57s ERR
+len~ 190000 depth=0.5 prompt_tok=      0 found=False t=0.59s ERR
+len~ 190000 depth=0.9 prompt_tok=      0 found=False t=0.58s ERR
+
+NIAH_DONE passed=0/12 max_prompt_tokens=7369
+[04:53:40] pushed logs -> mi300x-evidence (qwen3-32b niah)
+[04:53:40] qwen3-32b DONE; container removed
+[04:53:40] === suite (ROCm cross-check) ===
+ERROR tests/test_integration.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+3 skipped, 80 warnings, 1 error in 3.35s
+[04:53:46] pushed logs -> mi300x-evidence (pytest rocm)
+[04:53:46] === HBM3 bandwidth ===
+[04:53:48] pushed logs -> mi300x-evidence (hbm3)
+[04:53:48] === ALL_DONE_SENTINEL ===

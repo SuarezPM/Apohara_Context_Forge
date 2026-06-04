@@ -1,0 +1,338 @@
+
+==================================== ERRORS ====================================
+__________________ ERROR collecting tests/test_integration.py __________________
+ImportError while importing test module '/home/hotaisle/Apohara_Context_Forge/tests/test_integration.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests/test_integration.py:5: in <module>
+    import pytest_asyncio
+E   ModuleNotFoundError: No module named 'pytest_asyncio'
+=============================== warnings summary ===============================
+../.local/lib/python3.10/site-packages/_pytest/config/__init__.py:1434
+  /home/hotaisle/.local/lib/python3.10/site-packages/_pytest/config/__init__.py:1434: PytestConfigWarning: Unknown config option: asyncio_mode
+
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+tests/test_cla_metadata.py:23
+  /home/hotaisle/Apohara_Context_Forge/tests/test_cla_metadata.py:23: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_cla_metadata.py:34
+  /home/hotaisle/Apohara_Context_Forge/tests/test_cla_metadata.py:34: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_compressor.py:99
+  /home/hotaisle/Apohara_Context_Forge/tests/test_compressor.py:99: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:29
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:29: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:53
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:53: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:74
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:74: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:91
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:91: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:104
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:104: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:115
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:115: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:134
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:134: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:150
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:150: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:160
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:160: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:189
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:189: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:208
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:208: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:227
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:227: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:242
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:242: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:248
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:248: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_dedup.py:265
+  /home/hotaisle/Apohara_Context_Forge/tests/test_dedup.py:265: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:22
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:22: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:28
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:28: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:37
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:37: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:48
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:48: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:56
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:56: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:64
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:64: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_embedding_engine.py:71
+  /home/hotaisle/Apohara_Context_Forge/tests/test_embedding_engine.py:71: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_aware_router.py:22
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_aware_router.py:22: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_aware_router.py:34
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_aware_router.py:34: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_aware_router.py:46
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_aware_router.py:46: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_aware_router.py:56
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_aware_router.py:56: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_aware_router.py:67
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_aware_router.py:67: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:35
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:35: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:49
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:49: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:59
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:59: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:78
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:78: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:93
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:93: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:103
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:103: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:128
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:128: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:141
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:141: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:176
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:176: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:190
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:190: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:207
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:207: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:250
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:250: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kv_offset.py:272
+  /home/hotaisle/Apohara_Context_Forge/tests/test_kv_offset.py:272: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_lmcache_bridge.py:37
+  /home/hotaisle/Apohara_Context_Forge/tests/test_lmcache_bridge.py:37: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_lmcache_bridge.py:44
+  /home/hotaisle/Apohara_Context_Forge/tests/test_lmcache_bridge.py:44: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pbkv_predictor.py:19
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pbkv_predictor.py:19: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pbkv_predictor.py:36
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pbkv_predictor.py:36: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pbkv_predictor.py:60
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pbkv_predictor.py:60: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pbkv_predictor.py:74
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pbkv_predictor.py:74: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pbkv_predictor.py:278
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pbkv_predictor.py:278: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pbkv_predictor.py:300
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pbkv_predictor.py:300: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pipeline.py:22
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pipeline.py:22: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pipeline.py:34
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pipeline.py:34: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pipeline.py:48
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pipeline.py:48: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pipeline.py:54
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pipeline.py:54: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pipeline.py:66
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pipeline.py:66: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_pipeline.py:81
+  /home/hotaisle/Apohara_Context_Forge/tests/test_pipeline.py:81: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_registry.py:6
+  /home/hotaisle/Apohara_Context_Forge/tests/test_registry.py:6: DeprecationWarning: This module is deprecated as of v3.0. Use VRAMAwareCache instead.
+    from apohara_context_forge.registry._deprecated_ttl_cache import TTLCache
+
+tests/test_rotate_kv.py:38
+  /home/hotaisle/Apohara_Context_Forge/tests/test_rotate_kv.py:38: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_rotate_kv.py:56
+  /home/hotaisle/Apohara_Context_Forge/tests/test_rotate_kv.py:56: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_rotate_kv.py:71
+  /home/hotaisle/Apohara_Context_Forge/tests/test_rotate_kv.py:71: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:106
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:106: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:117
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:117: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:130
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:130: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:146
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:146: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:169
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:169: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:190
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:190: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:213
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:213: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_speculative_coordinator.py:233
+  /home/hotaisle/Apohara_Context_Forge/tests/test_speculative_coordinator.py:233: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:10
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:10: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:17
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:17: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:29
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:29: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:37
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:37: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:49
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:49: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:63
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:63: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_step_graph.py:72
+  /home/hotaisle/Apohara_Context_Forge/tests/test_step_graph.py:72: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_vllm_client_salt.py:39
+  /home/hotaisle/Apohara_Context_Forge/tests/test_vllm_client_salt.py:39: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_vllm_client_salt.py:56
+  /home/hotaisle/Apohara_Context_Forge/tests/test_vllm_client_salt.py:56: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_vllm_client_salt.py:72
+  /home/hotaisle/Apohara_Context_Forge/tests/test_vllm_client_salt.py:72: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/test_integration.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+3 skipped, 80 warnings, 1 error in 3.35s

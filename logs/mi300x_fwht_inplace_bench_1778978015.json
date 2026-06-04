@@ -1,0 +1,85 @@
+{
+  "hardware": "rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF",
+  "results": [
+    {
+      "config": "b1_s4096_h32_d128",
+      "baseline_bytes": 33554432,
+      "original": {
+        "peak_alloc_bytes": 100663296,
+        "overhead_pct": 200.0,
+        "duration_ms": 1.0649939995346358
+      },
+      "inplace": {
+        "peak_alloc_bytes": 234881024,
+        "overhead_pct": 600.0,
+        "duration_ms": 1.35781999961182
+      },
+      "speedup_x": 0.7843410760182508,
+      "equivalence_max_diff": 0.005859375
+    },
+    {
+      "config": "b1_s16384_h32_d128",
+      "baseline_bytes": 134217728,
+      "original": {
+        "peak_alloc_bytes": 469762048,
+        "overhead_pct": 250.0,
+        "duration_ms": 2.6457259991730098
+      },
+      "inplace": {
+        "peak_alloc_bytes": 973078528,
+        "overhead_pct": 625.0,
+        "duration_ms": 4.5573349998448975
+      },
+      "speedup_x": 0.5805423562812594,
+      "equivalence_max_diff": 0.0078125
+    },
+    {
+      "config": "b1_s32768_h32_d128",
+      "baseline_bytes": 268435456,
+      "original": {
+        "peak_alloc_bytes": 1073741824,
+        "overhead_pct": 300.0,
+        "duration_ms": 5.050892000326712
+      },
+      "inplace": {
+        "peak_alloc_bytes": 2013265920,
+        "overhead_pct": 650.0,
+        "duration_ms": 9.128965999479988
+      },
+      "speedup_x": 0.553281938021724,
+      "equivalence_max_diff": 0.0078125
+    },
+    {
+      "config": "b1_s16384_h32_d256",
+      "baseline_bytes": 268435456,
+      "original": {
+        "peak_alloc_bytes": 1342177280,
+        "overhead_pct": 400.0,
+        "duration_ms": 5.559508999795071
+      },
+      "inplace": {
+        "peak_alloc_bytes": 2147483648,
+        "overhead_pct": 700.0,
+        "duration_ms": 10.21554399994784
+      },
+      "speedup_x": 0.5442205525054228,
+      "equivalence_max_diff": 0.005859375
+    },
+    {
+      "config": "b1_s16384_h64_d128",
+      "baseline_bytes": 268435456,
+      "original": {
+        "peak_alloc_bytes": 1342177280,
+        "overhead_pct": 400.0,
+        "duration_ms": 5.39676700009295
+      },
+      "inplace": {
+        "peak_alloc_bytes": 2147483648,
+        "overhead_pct": 700.0,
+        "duration_ms": 9.25095999991754
+      },
+      "speedup_x": 0.5833737255529216,
+      "equivalence_max_diff": 0.0078125
+    }
+  ]
+}

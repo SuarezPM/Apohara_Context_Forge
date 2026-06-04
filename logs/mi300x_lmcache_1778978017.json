@@ -1,0 +1,20 @@
+{
+  "hardware": "rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF",
+  "timestamp": 1778978017,
+  "redis": "not running",
+  "lmcache_active": false,
+  "lmcache_stats_initial": {
+    "active": false,
+    "backend": "fallback",
+    "instance_id": "apohara-mi300x-smoke",
+    "chunk_size": 64,
+    "local_device": "cpu",
+    "remote_url": null,
+    "build_error": "ModuleNotFoundError: No module named 'lmcache'",
+    "stores": 0,
+    "retrieves_hit": 0,
+    "retrieves_miss": 0,
+    "lookups": 0
+  },
+  "mode": "honest_fallback (lmcache not importable or engine build failed)"
+}

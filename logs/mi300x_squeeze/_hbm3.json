@@ -1,0 +1,8 @@
+Hardware: cpu
+
+Traceback (most recent call last):
+  File "/home/hotaisle/Apohara_Context_Forge/scripts/mi300x_hbm3_bandwidth.py", line 94, in <module>
+    raise SystemExit(main())
+  File "/home/hotaisle/Apohara_Context_Forge/scripts/mi300x_hbm3_bandwidth.py", line 75, in main
+    print(f"size={size_gb:>5.1f} GB: copy={r['copy_bw_gbps']:>7.1f} GB/s triad={r['triad_bw_gbps']:>7.1f} GB/s")
+KeyError: 'copy_bw_gbps'

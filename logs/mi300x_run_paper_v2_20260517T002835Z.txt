@@ -1,0 +1,49 @@
+[2026-05-17T00:28:35+00:00] mi300x_run_paper_v2 start
+
+=== Stage: extreme_scale ===
+Command: .venv/bin/python scripts/mi300x_extreme_scale.py
+seq= 65536 nh=32 hd=128 fwht=False baseline= 1.07GB packed= 0.30GB reduction= 3.55x dur=  21.9s
+seq=131072 nh=32 hd=128 fwht=False baseline= 2.15GB packed= 0.60GB reduction= 3.56x dur=  43.6s
+seq= 65536 nh=32 hd=256 fwht=False baseline= 2.15GB packed= 0.60GB reduction= 3.55x dur=  43.3s
+seq=262144 nh=16 hd=128 fwht=False baseline= 2.15GB packed= 0.60GB reduction= 3.56x dur=  43.6s
+
+Wrote logs/mi300x_extreme_scale_1778977872.json
+[2026-05-17T00:31:13+00:00] extreme_scale elapsed=158s exit=0
+
+=== Stage: quant_quality ===
+Command: .venv/bin/python scripts/mi300x_quant_quality.py
+Hardware: rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF
+fp16 baseline: mse_k=4.31e-08 max_err=1.95e-03 bytes=268435456
+int8 naive:    mse_k=3.44e-05 max_err=1.73e-02 bytes=142606336 red=1.88x
+int4 use_fwht=False: mse_k=1.01e-02 max_err=3.25e-01 bytes=75563008 red=3.55x dur=62429ms
+int4 use_fwht=True: mse_k=2.01e+00 max_err=8.49e+00 bytes=75563008 red=3.55x dur=68818ms
+
+Wrote logs/mi300x_quant_quality_1778978012.json
+[2026-05-17T00:33:33+00:00] quant_quality elapsed=140s exit=0
+
+=== Stage: fwht_inplace ===
+Command: .venv/bin/python scripts/mi300x_fwht_inplace_bench.py
+Hardware: rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF
+
+s= 4096 h=32 d=128: orig ovh +200.0%    1.1ms | inplace ovh +600.0%    1.4ms | speedup 0.78x | equiv max_diff 5.86e-03
+s=16384 h=32 d=128: orig ovh +250.0%    2.6ms | inplace ovh +625.0%    4.6ms | speedup 0.58x | equiv max_diff 7.81e-03
+s=32768 h=32 d=128: orig ovh +300.0%    5.1ms | inplace ovh +650.0%    9.1ms | speedup 0.55x | equiv max_diff 7.81e-03
+s=16384 h=32 d=256: orig ovh +400.0%    5.6ms | inplace ovh +700.0%   10.2ms | speedup 0.54x | equiv max_diff 5.86e-03
+s=16384 h=64 d=128: orig ovh +400.0%    5.4ms | inplace ovh +700.0%    9.3ms | speedup 0.58x | equiv max_diff 7.81e-03
+
+Wrote logs/mi300x_fwht_inplace_bench_1778978015.json
+[2026-05-17T00:33:36+00:00] fwht_inplace elapsed=3s exit=0
+
+=== Stage: lmcache_smoke ===
+Command: .venv/bin/python scripts/mi300x_lmcache_smoke.py
+LMCacheConnectorV2: lmcache not importable (ModuleNotFoundError: No module named 'lmcache'); connector will run in honest-fallback mode (every call returns the documented null value).
+Hardware: rocm-hip:6.2.41133-dd7f95766:AMD Instinct MI300X VF
+redis-server not responding; attempting docker fallback...
+LMCache active: False
+Initial stats: {'active': False, 'backend': 'fallback', 'instance_id': 'apohara-mi300x-smoke', 'chunk_size': 64, 'local_device': 'cpu', 'remote_url': None, 'build_error': "ModuleNotFoundError: No module named 'lmcache'", 'stores': 0, 'retrieves_hit': 0, 'retrieves_miss': 0, 'lookups': 0}
+
+Wrote logs/mi300x_lmcache_1778978017.json
+[2026-05-17T00:33:38+00:00] lmcache_smoke elapsed=2s exit=0
+
+=== Wall-clock: 303s ===
+=== New MI300X logs from this run: ===

@@ -1,0 +1,120 @@
+{
+  "artifact": "NIAH long-context probe (server-side vLLM)",
+  "timestamp_utc": "2026-05-29T04:53:39Z",
+  "model": "qwen3-32b",
+  "endpoint": "http://127.0.0.1:8004",
+  "needle_code": "QX-7731-ZULU",
+  "probes": 12,
+  "passed": 0,
+  "max_prompt_tokens": 7369,
+  "results": [
+    {
+      "approx_tokens": 8000,
+      "depth": 0.1,
+      "prompt_tokens": 7369,
+      "found": false,
+      "ttft_plus_gen_s": 1.84,
+      "answer": "<think>\nOkay, let me try to figure this out. The user provided a very long text ",
+      "error": null
+    },
+    {
+      "approx_tokens": 8000,
+      "depth": 0.5,
+      "prompt_tokens": 7369,
+      "found": false,
+      "ttft_plus_gen_s": 1.69,
+      "answer": "<think>\nOkay, let me look through this text. The user provided a long repetition",
+      "error": null
+    },
+    {
+      "approx_tokens": 8000,
+      "depth": 0.9,
+      "prompt_tokens": 7369,
+      "found": false,
+      "ttft_plus_gen_s": 1.38,
+      "answer": "<think>\nOkay, let me look through this. The user provided a long text that repea",
+      "error": null
+    },
+    {
+      "approx_tokens": 32000,
+      "depth": 0.1,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.16,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 32000,
+      "depth": 0.5,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.13,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 32000,
+      "depth": 0.9,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.16,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 128000,
+      "depth": 0.1,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.39,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 128000,
+      "depth": 0.5,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.4,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 128000,
+      "depth": 0.9,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.38,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 190000,
+      "depth": 0.1,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.57,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 190000,
+      "depth": 0.5,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.59,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    },
+    {
+      "approx_tokens": 190000,
+      "depth": 0.9,
+      "prompt_tokens": 0,
+      "found": false,
+      "ttft_plus_gen_s": 0.58,
+      "answer": "",
+      "error": "HTTPStatusError(\"Client error '400 Bad Request' for url 'http://127.0.0.1:8004/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400\")"
+    }
+  ]
+}

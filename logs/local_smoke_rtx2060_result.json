@@ -1,0 +1,30 @@
+{
+  "model": "Qwen/Qwen3-1.7B",
+  "hardware": "RTX 2060 SUPER 8GB (Turing) \u2014 PROOF-OF-MECHANISM, not cited",
+  "shared": {
+    "requests_ok": 5,
+    "queries_delta": 856.0,
+    "hits_delta": 640.0,
+    "hit_rate": 0.7477
+  },
+  "isolated": {
+    "requests_ok": 5,
+    "queries_delta": 856.0,
+    "hits_delta": 0.0,
+    "hit_rate": 0.0
+  },
+  "vram": {
+    "used_gb": 7.754,
+    "total_gb": 8.0,
+    "vram_source": "cuda_nvml",
+    "second_source_used_gb": 7.358,
+    "second_source": "nvidia-smi"
+  },
+  "verdict": {
+    "mechanism_proven": true,
+    "shared_hit_rate": 0.7477,
+    "isolated_hit_rate": 0.0,
+    "interpretation": "SHARED reuses prefix KV blocks; ISOLATED (unique salt) does not. cache_salt drives sharing as PrefixSaltPlanner intends."
+  },
+  "status": "ok"
+}

@@ -1,0 +1,53 @@
+{
+  "model": "Qwen/Qwen3-1.7B",
+  "redis_url": "redis://localhost:6379",
+  "hardware": "RTX 2060 SUPER 8GB (Turing) \u2014 PLUMBING PROOF, not cited",
+  "kv_transfer_config": {
+    "kv_connector": "LMCacheConnectorV1Dynamic",
+    "kv_role": "kv_both",
+    "kv_connector_module_path": "lmcache.integration.vllm.lmcache_connector_v1"
+  },
+  "w1_requests_ok": 6,
+  "w1_prefix_metrics": {
+    "vllm:prefix_cache_queries_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1003.0,
+    "vllm:prefix_cache_queries_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014344.3983214,
+    "vllm:prefix_cache_hits_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 720.0,
+    "vllm:prefix_cache_hits_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014344.3983324,
+    "vllm:external_prefix_cache_queries_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 283.0,
+    "vllm:external_prefix_cache_queries_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014344.3983426,
+    "vllm:external_prefix_cache_hits_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 0.0,
+    "vllm:external_prefix_cache_hits_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014344.3983557,
+    "vllm:prompt_tokens_by_source_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\",source=\"external_kv_transfer\"}": 0.0,
+    "vllm:prompt_tokens_by_source_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\",source=\"external_kv_transfer\"}": 1780014344.398421
+  },
+  "w1_lmcache_log": {
+    "log_mentions_retrieve": 2,
+    "log_mentions_store": 15,
+    "log_mentions_hit": 9,
+    "token_numbers": []
+  },
+  "w2_requests_ok": 6,
+  "w2_prefix_metrics": {
+    "vllm:prefix_cache_queries_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1003.0,
+    "vllm:prefix_cache_queries_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014393.1954117,
+    "vllm:prefix_cache_hits_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 720.0,
+    "vllm:prefix_cache_hits_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014393.1954224,
+    "vllm:external_prefix_cache_queries_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 283.0,
+    "vllm:external_prefix_cache_queries_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014393.1954324,
+    "vllm:external_prefix_cache_hits_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 240.0,
+    "vllm:external_prefix_cache_hits_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\"}": 1780014393.1954474,
+    "vllm:prompt_tokens_by_source_total{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\",source=\"external_kv_transfer\"}": 240.0,
+    "vllm:prompt_tokens_by_source_created{engine=\"0\",model_name=\"Qwen/Qwen3-1.7B\",source=\"external_kv_transfer\"}": 1780014393.1955104
+  },
+  "w2_lmcache_log": {
+    "log_mentions_retrieve": 8,
+    "log_mentions_store": 3,
+    "log_mentions_hit": 9,
+    "token_numbers": []
+  },
+  "verdict": {
+    "cross_worker_reuse_observed": true,
+    "interpretation": "worker-2 (empty local cache) retrieved prefix KV from the shared Redis/LMCache backend that worker-1 stored \u2014 cross-process reuse works."
+  },
+  "status": "ok"
+}
