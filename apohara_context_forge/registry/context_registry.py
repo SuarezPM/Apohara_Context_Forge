@@ -452,7 +452,11 @@ class ContextRegistry:
                 None, self._token_counter.count, context
             )
         except Exception:
-            token_count = max(1, len(context.split()))
+            def _fallback_count(c: str) -> int:
+                return max(1, len(c.split()))
+            token_count = await loop.run_in_executor(
+                None, _fallback_count, context
+            )
 
         now = _dt.now(_tz.utc)
         entry = ContextEntry(
