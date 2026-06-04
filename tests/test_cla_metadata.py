@@ -1,6 +1,6 @@
 """Tests for CLAMetadataLayer — TASK-004."""
 import pytest
-from apohara_context_forge.kv_offset.cla_metadata import CLAMetadataLayer, CLAGroupConfig, CLAHint, NON_THOUGHT_ROLES
+from apohara_context_forge.kv_offset.cla_metadata import CLAMetadataLayer, CLAGroupConfig, CLAHint, NON_THOUGHT_ROLES, HintRequest
 
 
 class TestCLAMetadataLayer:
@@ -45,13 +45,14 @@ class TestCLAMetadataLayer:
         """emit_hint returns CLAHint with correct fields."""
         config = CLAGroupConfig(group_size=2)
         layer = CLAMetadataLayer(config)
-        hint = layer.emit_hint(
+        request = HintRequest(
             agent_id="agent1",
             model_id="Qwen3.6-35B-A22B",
             is_thinking_mode=False,
             model_layer_count=32,
             agent_role="retriever",
         )
+        hint = layer.emit_hint(request)
         assert isinstance(hint, CLAHint)
         assert hint.agent_id == "agent1"
         assert hint.model_id == "Qwen3.6-35B-A22B"
@@ -62,13 +63,14 @@ class TestCLAMetadataLayer:
         """emit_hint returns empty groups for thinking mode when bypass=True."""
         config = CLAGroupConfig(group_size=2, thinking_mode_bypass=True)
         layer = CLAMetadataLayer(config)
-        hint = layer.emit_hint(
+        request = HintRequest(
             agent_id="agent1",
             model_id="Qwen3.6-35B-A22B",
             is_thinking_mode=True,
             model_layer_count=32,
             agent_role="critic",
         )
+        hint = layer.emit_hint(request)
         assert len(hint.layer_groups) == 0
         assert hint.estimated_vram_reduction_pct == 0.0
         assert hint.is_thinking_mode == True

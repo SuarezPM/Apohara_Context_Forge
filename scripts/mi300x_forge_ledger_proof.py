@@ -50,7 +50,7 @@ def _pct(vals, q):
     return s[lo] + (s[hi] - s[lo]) * (k - lo)
 
 
-def main() -> int:
+def _setup_environment() -> None:
     # Fresh ledger dir; set env BEFORE any recorder singleton is created.
     if FL_DIR.exists():
         shutil.rmtree(FL_DIR)
@@ -59,12 +59,10 @@ def main() -> int:
     os.environ["APOHARA_OBSERVABILITY_DIR"] = str(FL_DIR)
 
     from apohara_context_forge.observability import recorders
-    from apohara_context_forge.safety.jcr_gate import JCRSafetyGate
     recorders._reset_singletons()  # pick up the env we just set
 
-    gate = JCRSafetyGate()
 
-    # --- Drive the full sweep through the PRODUCTION gate path -------------
+def _drive_sweep(gate) -> tuple[int, float]:
     t0 = time.perf_counter()
     n = 0
     for role in ROLES:
@@ -74,10 +72,12 @@ def main() -> int:
                     gate.gate_decision(role, c, r, sh)
                     n += 1
     wall_s = time.perf_counter() - t0
+    return n, wall_s
 
-    # --- Read back the hash-chained ledger --------------------------------
+
+def _read_ledger_metrics(ledger_path: Path) -> tuple[list[dict], dict]:
     entries = []
-    with LEDGER.open() as f:
+    with ledger_path.open() as f:
         for line in f:
             line = line.strip()
             if line:
@@ -93,41 +93,60 @@ def main() -> int:
     blocks = sum(1 for p in payloads if p.get("gate_action") == "block")
     z3_version = payloads[0].get("z3_version") if payloads else None
 
-    # --- Chain verification via the production CLI (real exit code) -------
+    metrics = {
+        "satisfies": satisfies,
+        "z3_unsat": z3_unsat,
+        "use_dense_true": use_dense_true,
+        "blocks": blocks,
+        "z3_version": z3_version,
+        "elapsed_ms": elapsed_ms,
+    }
+    return entries, metrics
+
+
+def _verify_chain(ledger_path: Path) -> tuple[int, float, dict]:
     tv0 = time.perf_counter()
     cli = subprocess.run(
         [sys.executable, "-m", "apohara_context_forge.observability.ledger_cli",
-         "verify", str(LEDGER)],
+         "verify", str(ledger_path)],
         capture_output=True, text=True,
     )
     verify_cli_s = time.perf_counter() - tv0
     verify_json = json.loads(cli.stdout) if cli.stdout.strip() else {}
+    return cli.returncode, verify_cli_s, verify_json
 
-    # --- Live tamper demo: flip one byte in a middle entry ---------------
-    shutil.copy(LEDGER, TAMPERED)
-    raw = TAMPERED.read_bytes()
+
+def _run_tamper_demo(ledger_path: Path, tampered_path: Path) -> tuple[int, int, dict]:
+    shutil.copy(ledger_path, tampered_path)
+    raw = tampered_path.read_bytes()
     # Flip a byte ~60% through the file (inside an entry, not the trailing newline).
     pos = int(len(raw) * 0.6)
     flipped = bytearray(raw)
     flipped[pos] = flipped[pos] ^ 0x01
-    TAMPERED.write_bytes(bytes(flipped))
+    tampered_path.write_bytes(bytes(flipped))
     tamper = subprocess.run(
         [sys.executable, "-m", "apohara_context_forge.observability.ledger_cli",
-         "verify", str(TAMPERED)],
+         "verify", str(tampered_path)],
         capture_output=True, text=True,
     )
     tamper_json = json.loads(tamper.stdout) if tamper.stdout.strip() else {}
+    return pos, tamper.returncode, tamper_json
 
-    ledger_bytes = LEDGER.stat().st_size
 
-    report = {
+def _build_report(
+    n: int, wall_s: float, entries: list[dict], metrics: dict,
+    cli_returncode: int, verify_cli_s: float, verify_json: dict, ledger_bytes: int,
+    pos: int, tamper_returncode: int, tamper_json: dict
+) -> dict:
+    elapsed_ms = metrics["elapsed_ms"]
+    return {
         "artifact": "FORGE-LEDGER MI300X hardware proof (S3)",
         "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": {
             "hostname": platform.node(),
             "platform": platform.platform(),
             "python": platform.python_version(),
-            "z3_version": z3_version,
+            "z3_version": metrics["z3_version"],
         },
         "sweep": {
             "roles": ROLES, "candidate_counts": CAND, "reuse_rates": REUSE,
@@ -136,7 +155,7 @@ def main() -> int:
             "ledger_entries": len(entries),
         },
         "integrity": {
-            "cli_verify_exit_code": cli.returncode,         # expect 0
+            "cli_verify_exit_code": cli_returncode,         # expect 0
             "cli_verify_result": verify_json,                # {valid,entries,broken_at,head}
             "chain_verify_seconds": round(verify_cli_s, 4),
             "ledger_bytes": ledger_bytes,
@@ -144,15 +163,15 @@ def main() -> int:
         },
         "tamper_demo": {
             "flipped_byte_offset": pos,
-            "cli_verify_exit_code": tamper.returncode,       # expect 2
+            "cli_verify_exit_code": tamper_returncode,       # expect 2
             "cli_verify_result": tamper_json,                # broken_at set
         },
         "z3_certification": {
-            "all_satisfies_inv15": satisfies == len(entries),
-            "satisfies_count": satisfies,
-            "z3_unsat_count": z3_unsat,
-            "observed_use_dense_count": use_dense_true,
-            "gate_block_count": blocks,
+            "all_satisfies_inv15": metrics["satisfies"] == len(entries),
+            "satisfies_count": metrics["satisfies"],
+            "z3_unsat_count": metrics["z3_unsat"],
+            "observed_use_dense_count": metrics["use_dense_true"],
+            "gate_block_count": metrics["blocks"],
             "latency_ms": {
                 "mean": round(statistics.fmean(elapsed_ms), 4) if elapsed_ms else None,
                 "p50": round(_pct(elapsed_ms, 50), 4),
@@ -167,6 +186,33 @@ def main() -> int:
         },
     }
 
+
+def main() -> int:
+    _setup_environment()
+
+    from apohara_context_forge.safety.jcr_gate import JCRSafetyGate
+    gate = JCRSafetyGate()
+
+    # --- Drive the full sweep through the PRODUCTION gate path -------------
+    n, wall_s = _drive_sweep(gate)
+
+    # --- Read back the hash-chained ledger --------------------------------
+    entries, metrics = _read_ledger_metrics(LEDGER)
+
+    # --- Chain verification via the production CLI (real exit code) -------
+    cli_returncode, verify_cli_s, verify_json = _verify_chain(LEDGER)
+
+    # --- Live tamper demo: flip one byte in a middle entry ---------------
+    pos, tamper_returncode, tamper_json = _run_tamper_demo(LEDGER, TAMPERED)
+
+    ledger_bytes = LEDGER.stat().st_size
+
+    report = _build_report(
+        n, wall_s, entries, metrics,
+        cli_returncode, verify_cli_s, verify_json, ledger_bytes,
+        pos, tamper_returncode, tamper_json
+    )
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2))
 
@@ -174,14 +220,14 @@ def main() -> int:
     print(json.dumps(report, indent=2))
     ok = (
         len(entries) == EXPECTED
-        and cli.returncode == 0
+        and cli_returncode == 0
         and verify_json.get("valid") is True
-        and satisfies == len(entries)
-        and tamper.returncode == 2
+        and metrics["satisfies"] == len(entries)
+        and tamper_returncode == 2
         and tamper_json.get("valid") is False
     )
     print(f"\nPROOF_OK={ok}  entries={len(entries)}/{EXPECTED}  "
-          f"verify_exit={cli.returncode}  tamper_exit={tamper.returncode}")
+          f"verify_exit={cli_returncode}  tamper_exit={tamper_returncode}")
     return 0 if ok else 1
 
 

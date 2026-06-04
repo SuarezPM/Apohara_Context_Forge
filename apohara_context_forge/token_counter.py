@@ -5,9 +5,18 @@ Uses transformers AutoTokenizer for Qwen3-35B-A3B (or fallback).
 """
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class KVConfig:
+    n_layers: int = 64
+    n_kv_heads: int = 8
+    head_dim: int = 128
+    dtype_bytes: int = 2
 
 
 class TokenCounter:
@@ -139,10 +148,7 @@ class TokenCounter:
     def compute_kv_vram_bytes(
         self,
         token_count: int,
-        n_layers: int = 64,
-        n_kv_heads: int = 8,
-        head_dim: int = 128,
-        dtype_bytes: int = 2,  # fp16 = 2 bytes, bf16 = 2 bytes
+        config: Optional[KVConfig] = None,
     ) -> int:
         """
         Compute VRAM bytes for KV cache given token count.
@@ -151,15 +157,14 @@ class TokenCounter:
         
         Args:
             token_count: Number of tokens in context
-            n_layers: Number of transformer layers (Qwen3-35B has 64)
-            n_kv_heads: Number of KV heads (Qwen3 uses GQA, typically 8)
-            head_dim: Dimension per head (typically 128 for Qwen)
-            dtype_bytes: Bytes per value (2 for fp16/bf16)
+            config: KV cache configuration parameters
             
         Returns:
             VRAM bytes needed for KV cache
         """
-        return 2 * n_layers * token_count * n_kv_heads * head_dim * dtype_bytes
+        if config is None:
+            config = KVConfig()
+        return 2 * config.n_layers * token_count * config.n_kv_heads * config.head_dim * config.dtype_bytes
     
     def compute_kv_vram_gb(
         self,
@@ -167,7 +172,9 @@ class TokenCounter:
         **kwargs
     ) -> float:
         """Compute VRAM in gigabytes."""
-        return self.compute_kv_vram_bytes(token_count, **kwargs) / (1024 ** 3)
+        config_kwargs = {k: v for k, v in kwargs.items() if hasattr(KVConfig, k)}
+        config = KVConfig(**config_kwargs) if config_kwargs else None
+        return self.compute_kv_vram_bytes(token_count, config=config) / (1024 ** 3)
 
 
 # Convenience functions for use throughout codebase
