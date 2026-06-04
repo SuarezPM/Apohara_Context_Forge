@@ -18,6 +18,7 @@ Why Markov over neural:
 from __future__ import annotations
 
 import asyncio
+import aiofiles
 import json
 import logging
 import os
@@ -110,8 +111,8 @@ class PBKVPredictor:
 
             # Append to JSONL log
             try:
-                with open(self._log_file, "a") as f:
-                    f.write(json.dumps(record.__dict__) + "\n")
+                async with aiofiles.open(self._log_file, "a") as f:
+                    await f.write(json.dumps(record.__dict__) + "\n")
             except Exception as e:
                 logger.warning(f"Failed to write PBKV log: {e}")
 
