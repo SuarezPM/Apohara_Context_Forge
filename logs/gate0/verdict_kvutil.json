@@ -1,0 +1,108 @@
+{
+  "primary_metric": "gpu_cache_usage_perc",
+  "a": {
+    "arm": "A",
+    "metric": "gpu_cache_usage_perc",
+    "value": null,
+    "ci": {
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "n": 0,
+      "method": "none(n<2)",
+      "confidence": 0.95
+    },
+    "condition": {
+      "model": "Qwen/Qwen3-32B",
+      "hardware_label": "AMD/ROCm",
+      "vram_source": "pyrsmi",
+      "second_source": "rocm-smi",
+      "topology": "single_worker",
+      "n_agents": 5,
+      "n_requests": 320,
+      "concurrency": 32,
+      "max_tokens": 64,
+      "approx_prefix_tokens": 517,
+      "shared_prefix_fraction": 1.0,
+      "block_size": 16,
+      "kv_cache_dtype": "auto",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "aiter_applied": true,
+      "pythonhashseed": "0"
+    },
+    "valid": false
+  },
+  "b": {
+    "arm": "B",
+    "metric": "gpu_cache_usage_perc",
+    "value": null,
+    "ci": {
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "n": 0,
+      "method": "none(n<2)",
+      "confidence": 0.95
+    },
+    "condition": {
+      "model": "Qwen/Qwen3-32B",
+      "hardware_label": "AMD/ROCm",
+      "vram_source": "pyrsmi",
+      "second_source": "rocm-smi",
+      "topology": "single_worker",
+      "n_agents": 5,
+      "n_requests": 320,
+      "concurrency": 32,
+      "max_tokens": 64,
+      "approx_prefix_tokens": 517,
+      "shared_prefix_fraction": 1.0,
+      "block_size": 16,
+      "kv_cache_dtype": "auto",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "aiter_applied": true,
+      "pythonhashseed": "0"
+    },
+    "valid": false
+  },
+  "c": {
+    "arm": "C",
+    "metric": "gpu_cache_usage_perc",
+    "value": null,
+    "ci": {
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "n": 0,
+      "method": "none(n<2)",
+      "confidence": 0.95
+    },
+    "condition": {
+      "model": "Qwen/Qwen3-32B",
+      "hardware_label": "AMD/ROCm",
+      "vram_source": "pyrsmi",
+      "second_source": "rocm-smi",
+      "topology": "single_worker",
+      "n_agents": 5,
+      "n_requests": 320,
+      "concurrency": 32,
+      "max_tokens": 64,
+      "approx_prefix_tokens": 517,
+      "shared_prefix_fraction": 1.0,
+      "block_size": 16,
+      "kv_cache_dtype": "auto",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "aiter_applied": true,
+      "pythonhashseed": "0"
+    },
+    "valid": false
+  },
+  "delta_b_minus_a": null,
+  "delta_pct": null,
+  "delta_ci_pct": null,
+  "cut": "INDECISIVE",
+  "rationale": "INDECISIVE: la métrica primaria 'gpu_cache_usage_perc' no es aislable/válida en el/los brazo(s) A/B (p.ej. HBM device-wide no aísla KV, o fuente VRAM no honesta). No se decide sobre un número ausente.",
+  "quotable": true
+}

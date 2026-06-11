@@ -56,7 +56,13 @@ def log(msg: str) -> None:
 def post(endpoint, model, prompt, *, salt=None, max_tokens=16, stream=False):
     """POST one completion. Mirrors scripts.mi300x_measure._post byte-for-byte so the
     metrics readers can drive traffic without importing vLLM or knowing the wire format."""
-    body = {"model": model, "prompt": prompt, "max_tokens": max_tokens, "temperature": 0.0}
+    # vLLM advertises the model under --served-model-name (basename of the HF repo id).
+    # When the harness is invoked with the full HF id (e.g. "Qwen/Qwen3-32B") the server
+    # registers it under "Qwen3-32B" — and /v1/completions resolves the body `model` field
+    # against that registry. Passing the full id here 404s. Mirror arms._served_name so
+    # the request always uses the same name the server is serving.
+    served_name = model.rsplit("/", 1)[-1]
+    body = {"model": served_name, "prompt": prompt, "max_tokens": max_tokens, "temperature": 0.0}
     if salt is not None:
         body["cache_salt"] = salt
     if stream:

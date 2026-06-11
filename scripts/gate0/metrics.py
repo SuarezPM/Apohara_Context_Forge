@@ -345,9 +345,31 @@ def _scrape_kv_gauges(endpoint: str) -> dict:
 
     # Map of /metrics suffixes -> our normalized key. Names vary across vLLM
     # versions; we match by substring and take the last value on the line.
+    # vLLM V1 emits the primary cache gauge as `vllm:kv_cache_usage_perc`
+    # (note the `kv_` prefix — earlier V0 builds used `gpu_cache_usage_perc`,
+    # so we accept both for forward/backward compatibility). We also pull
+    # companion gauges (num_gpu_blocks, block_size, capacity) so the
+    # precedence chain in _calculate_kv_footprint can actually activate
+    # method 1 (gpu_cache_usage_perc * KV-cache capacity) or method 2
+    # (num_gpu_blocks_used * block_size * kv_bytes_per_token) — before this
+    # fix, the chain was missing the V1 metric names entirely and the run
+    # silently fell through to hbm_minus_weights or the loud-fallback path.
     wanted = (
+        # Primary usage gauge — accept V0 and V1 names.
+        ("kv_cache_usage_perc", "gpu_cache_usage_perc"),
         ("gpu_cache_usage_perc", "gpu_cache_usage_perc"),
+        # Active blocks in use (V1 emits this separately from cache_config_info).
         ("num_gpu_blocks_used", "num_gpu_blocks_used"),
+        # Total blocks configured (V1 emits this inside `cache_config_info`
+        # as a label `num_gpu_blocks="27958"`; a separate scalar gauge is
+        # NOT exposed in V1, so we fall back to extracting it from the
+        # cache_config_info block in _extract_cache_config below).
+        ("kv_cache_capacity_bytes", "kv_cache_capacity_bytes"),
+        ("kv_cache_capacity_per_token_bytes", "kv_cache_capacity_per_token_bytes"),
+        # Block geometry (for method 2).
+        ("kv_cache_block_size", "kv_cache_block_size"),
+        # Approximate KV bytes per token.
+        ("kv_bytes_per_token", "kv_bytes_per_token"),
     )
     for line in text.splitlines():
         if line.startswith("#"):
@@ -360,7 +382,75 @@ def _scrape_kv_gauges(endpoint: str) -> dict:
                         out[key] = float(m.group(1))
                     except ValueError:
                         pass
+    # Derive kv_cache_capacity_gb from raw bytes (vLLM V1 emits the
+    # _bytes form). The downstream precedence chain in
+    # _calculate_kv_footprint expects a *_gb key, so we synthesize ONLY
+    # from a gauge the server actually emitted (no fabrication).
+    if "kv_cache_capacity_bytes" in out and "kv_cache_capacity_gb" not in out:
+        out["kv_cache_capacity_gb"] = round(out["kv_cache_capacity_bytes"] / (1024 ** 3), 6)
+    # Also accept _per_token_bytes: the chain needs block_size * bytes/token
+    # to compute method 2 (num_gpu_blocks_used * block_size * bytes/token).
+    if "kv_cache_capacity_per_token_bytes" in out and "kv_bytes_per_token" not in out:
+        out["kv_bytes_per_token"] = out["kv_cache_capacity_per_token_bytes"]
+    # vLLM V1 hides `num_gpu_blocks` and `block_size` inside the
+    # `cache_config_info` info-gauge (every numeric label is a string).
+    # The precedence chain wants raw numbers, so we pull them from the
+    # labels — no fabrication, only present if the server emitted them.
+    if "num_gpu_blocks" not in out or "block_size" not in out:
+        cfg = _extract_cache_config_info(text)
+        if "num_gpu_blocks" not in out and "num_gpu_blocks" in cfg:
+            try:
+                out["num_gpu_blocks"] = float(cfg["num_gpu_blocks"])
+            except (TypeError, ValueError):
+                pass
+        if "block_size" not in out and "block_size" in cfg:
+            try:
+                out["block_size"] = float(cfg["block_size"])
+            except (TypeError, ValueError):
+                pass
+    # Derive kv_cache_capacity_gb from block geometry IF the server emitted
+    # all three pieces (num_gpu_blocks, block_size, bytes_per_token) or a
+    # capacity-bytes gauge. vLLM V1 exposes num_gpu_blocks and block_size
+    # via cache_config_info labels but NOT bytes_per_token directly, so the
+    # bytes_per_token must come from another source (or we cannot derive
+    # capacity this way). The chain's method 2 is therefore still useful as
+    # a check: if num_gpu_blocks_used is exposed, we can compute
+    # kv_used = num_gpu_blocks_used * block_size * bytes_per_token / 1024^3.
+    if (
+        "kv_cache_capacity_gb" not in out
+        and "num_gpu_blocks" in out
+        and "block_size" in out
+        and "kv_bytes_per_token" in out
+    ):
+        out["kv_cache_capacity_gb"] = round(
+            out["num_gpu_blocks"] * out["block_size"] * out["kv_bytes_per_token"] / (1024 ** 3),
+            6,
+        )
     return out
+
+
+def _extract_cache_config_info(text: str) -> dict[str, str]:
+    """Parse the vLLM V1 `cache_config_info` info-gauge labels into a dict.
+
+    vLLM V1 emits e.g.
+        vllm:cache_config_info{block_size="16",num_gpu_blocks="27958",...} 1.0
+    Every label value is a quoted string; we strip the quotes. Returns {} if
+    the gauge is not present.
+    """
+    import re
+    for line in text.splitlines():
+        if "cache_config_info" not in line or line.startswith("#"):
+            continue
+        # Grab the `{...}` block and split on commas at the top level.
+        m = re.search(r"\{([^}]*)\}", line)
+        if not m:
+            continue
+        out: dict[str, str] = {}
+        # Each entry looks like key="value" (quotes always present in V1).
+        for kv in re.finditer(r'(\w+)="([^"]*)"', m.group(1)):
+            out[kv.group(1)] = kv.group(2)
+        return out
+    return {}
 
 
 # --------------------------------------------------------------------------- #

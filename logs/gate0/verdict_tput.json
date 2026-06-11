@@ -1,0 +1,108 @@
+{
+  "primary_metric": "decode_tok_s",
+  "a": {
+    "arm": "A",
+    "metric": "decode_tok_s",
+    "value": 2365.3,
+    "ci": {
+      "mean": 2365.3,
+      "lo": null,
+      "hi": null,
+      "n": 1,
+      "method": "none(n<2)",
+      "confidence": 0.95
+    },
+    "condition": {
+      "model": "Qwen/Qwen3-32B",
+      "hardware_label": "AMD/ROCm",
+      "vram_source": "pyrsmi",
+      "second_source": "rocm-smi",
+      "topology": "single_worker",
+      "n_agents": 5,
+      "n_requests": 320,
+      "concurrency": 32,
+      "max_tokens": 64,
+      "approx_prefix_tokens": 517,
+      "shared_prefix_fraction": 1.0,
+      "block_size": 16,
+      "kv_cache_dtype": "auto",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "aiter_applied": true,
+      "pythonhashseed": "0"
+    },
+    "valid": true
+  },
+  "b": {
+    "arm": "B",
+    "metric": "decode_tok_s",
+    "value": 1849.4,
+    "ci": {
+      "mean": 1849.4,
+      "lo": null,
+      "hi": null,
+      "n": 1,
+      "method": "none(n<2)",
+      "confidence": 0.95
+    },
+    "condition": {
+      "model": "Qwen/Qwen3-32B",
+      "hardware_label": "AMD/ROCm",
+      "vram_source": "pyrsmi",
+      "second_source": "rocm-smi",
+      "topology": "single_worker",
+      "n_agents": 5,
+      "n_requests": 320,
+      "concurrency": 32,
+      "max_tokens": 64,
+      "approx_prefix_tokens": 517,
+      "shared_prefix_fraction": 1.0,
+      "block_size": 16,
+      "kv_cache_dtype": "auto",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "aiter_applied": true,
+      "pythonhashseed": "0"
+    },
+    "valid": true
+  },
+  "c": {
+    "arm": "C",
+    "metric": "decode_tok_s",
+    "value": 1264.5,
+    "ci": {
+      "mean": 1264.5,
+      "lo": null,
+      "hi": null,
+      "n": 1,
+      "method": "none(n<2)",
+      "confidence": 0.95
+    },
+    "condition": {
+      "model": "Qwen/Qwen3-32B",
+      "hardware_label": "AMD/ROCm",
+      "vram_source": "pyrsmi",
+      "second_source": "rocm-smi",
+      "topology": "single_worker",
+      "n_agents": 5,
+      "n_requests": 320,
+      "concurrency": 32,
+      "max_tokens": 64,
+      "approx_prefix_tokens": 517,
+      "shared_prefix_fraction": 1.0,
+      "block_size": 16,
+      "kv_cache_dtype": "auto",
+      "max_model_len": 16384,
+      "gpu_memory_utilization": 0.9,
+      "aiter_applied": true,
+      "pythonhashseed": "0"
+    },
+    "valid": true
+  },
+  "delta_b_minus_a": -515.9000000000001,
+  "delta_pct": -21.811186741639542,
+  "delta_ci_pct": null,
+  "cut": "ABANDON",
+  "rationale": "mejora incremental -21.81% < 5% (ROMY queda como salting honesto INV-15, no memory optimizer)",
+  "quotable": true
+}
