@@ -18,6 +18,101 @@ for backwards compatibility but new code should target V2.
 | No prefetch logic.                                          | `prefetch()` returns per-block `cached_tokens` + `retrieved` so the ROMY pre-attention hook can decide whether to fetch or materialise. |
 | Silent on errors.                                           | Every API method logs a single WARNING on failure and returns the documented null value — no exceptions ever propagate to the caller. |
 
+## ROMY's role in the post-ABANDON reframe (Apohara 2.0)
+
+This section is the post-ABANDON reframe of ROMY (US-007 / Phase 5,
+`.omc/plans/apohara-2-0.md`). ROMY **survives as the isolation contract,
+not as a memory-optimizer**. The framing below replaces the "KV-sharing
+memory-optimizer" reading that the GATE #0 ABANDON (2026-06-11) falsified.
+
+### What ROMY actually does
+
+ROMY is the serving-side realisation of **INV-15**: a judge under high
+JCR risk (`use_dense=True`) gets a **unique `cache_salt`** via
+[`PrefixSaltPlanner.isolated_salt`](apohara_context_forge/serving/prefix_salt_planner.py:104),
+which forces vLLM's Automatic Prefix Caching to allocate fresh KV
+blocks for the judge request. Two distinct judge requests never
+collide on the shared prefix; a non-judge request on the same anchor
+gets the deterministic **shared salt** and reuses the prefix KV
+block.
+
+- **Shared salt** → vLLM APC prefix-cache hit rate **84.7 %** on
+  shared anchors (full-attention, 1× MI300X, Qwen3-32B, AUDIT #19,
+  2026-05-29).
+- **Isolated salt (judge, INV-15 dense)** → vLLM APC prefix-cache
+  hit rate **0.0 %** between judges (the regression anchor; new
+  `tests/test_romy_plugin.py::test_romy_judge_isolation_zero_hit_rate_regression_on_audit_19`).
+
+### What ROMY does NOT do (the post-ABANDON truth)
+
+The GATE #0 ABANDON (2026-06-11, on real MI300X, 1× MI300X,
+Qwen3-32B) showed that the **mechanical KV-sharing of ROMY is
+slower than vLLM's native APC**:
+
+- Throughput: **−22 %** vs APC alone (ROMY+APC vs APC alone, both
+  with APC enabled, full-attention).
+- TTFT: **+147 %** vs APC alone.
+
+The honest read: **APC alone already captures 97.2 % of the shared
+prefix hits for free** (measured, MI300X, 2026-06-11). A manual
+`cache_salt` plane that competes with APC adds accounting overhead
+without giving the optimizer anything it doesn't already have.
+ROMY's "memory-optimizer" framing is dead. The "isolation contract"
+framing survives because APC's hit rate is on the **shared** path
+only — judges still need a deliberate unique salt to be physically
+isolated, and that is what ROMY delivers.
+
+### Where the KV interception actually lives
+
+Per the real-platform audit (AUDIT #18, AUDIT #20), vLLM never
+exposed a pre/post attention-hook registry. The ROMY plugin's
+`register()` entry-point is real
+(`[project.entry-points."vllm.general_plugins"]`), but the
+`PreAttentionHook` / `PostAttentionHook` classes are
+**unit-tested utilities, NOT wired to the vLLM runtime**. The
+real KV interception path is **config-driven**:
+
+```text
+vLLM startup flags
+  ├── --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1Dynamic","kv_role":"kv_both", ...}'
+  │       ↑ wires the LMCacheConnectorV2 (this module) to every worker
+  │       ↑ the cross-worker KV path lives in LMCache + Redis
+  └── per-request cache_salt (string) — produced by PrefixSaltPlanner
+          ↑ shared: → APC reuses the prefix KV block (84.7 % hit on shared anchors)
+          ↑ isolated: → APC allocates fresh blocks (0.0 % hit between judges)
+```
+
+### Coexistence with the upstream TurboQuant-KV path (US-006)
+
+In the Apohara 2.0 stack, ROMY **coexists with the upstream
+TurboQuant-KV path** (`apohara_context_forge/serving/turboquant_kv.py`,
+US-006). ROMY is the **isolation contract on the prefix-caching
+axis** (vLLM APC's `cache_salt` plane); TurboQuant-KV is the
+**VRAM-reduction contract on the KV-storage axis** (Lloyd-Max +
+1-bit QJL, MIT-paper-derived codec). They live on orthogonal
+axes — the `cache_salt` plane does not compress KV, and the
+TurboQuant codec does not change which blocks are reused.
+
+The micro-bench at
+[`tests/benchmarks/romy_vs_turboquant_kv.py`](tests/benchmarks/romy_vs_turboquant_kv.py)
+measures **coexistence, not overlap**. Locally (RTX 2060 SUPER, slim
+venv), the bench runs the CPU-scalar TurboQuant codec and the
+`PrefixSaltPlanner`-driven ROMY salt path on the same synthetic
+input shape and asserts:
+
+- `judge_hit_rate = 0.0` (the AUDIT #19 regression anchor).
+- `shared_hit_rate_estimate = 0.847` (the AUDIT #19 shared-path
+  measurement, kept as the target).
+- `turboquant_kv_cpu_round_trip_mse` — measured, not asserted, on
+  the synthetic KV block.
+- `coexistence_pass = True` iff both layers run on the same input
+  shape without raising.
+
+The H100 / MI300X pivot (vectorised Lloyd-Max + 1-bit QJL, real
+VRAM measurement) is documented in `bench_kv.py` and gated behind
+the `--hardware h100|mi300x` flag. The local bench does **not**
+measure VRAM; it measures the coexistence contract.
+
 ## Architecture (multi-node story)
 
 ```

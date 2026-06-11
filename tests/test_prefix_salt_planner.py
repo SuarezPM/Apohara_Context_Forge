@@ -190,3 +190,69 @@ class TestSaltPlanShape:
         planner = PrefixSaltPlanner()
         assert planner.shared_salt(1, "g").startswith("shared:")
         assert planner.isolated_salt(1, "r").startswith("iso:")
+
+
+# ---------------------------------------------------------------------------
+# US-007 / Phase 5 — AUDIT #19 regression at the planner level               #
+# ---------------------------------------------------------------------------
+
+class TestPlannerJudgeIsolationRegression:
+    """Regression test on the salt planner itself (the source of the
+    `cache_salt` ROMY hands vLLM). Pins the AUDIT #19 baseline:
+
+    * 100 distinct judge requests → 100 unique isolated salts.
+    * 10 calls to the shared path with the same inputs → 10 identical
+      salts (the determinism that gives vLLM APC the 84.7 % shared
+      hit rate).
+
+    Reference: AUDIT.md §19. Post-ABANDON reframe (US-007 / Phase 5)
+    keeps the planner's contract unchanged; this test guards against
+    drift in the planner's deterministic / unique paths.
+    """
+
+    def test_prefix_salt_planner_judge_isolation_unique(self):
+        """100 isolated salts with distinct request_ids are all unique.
+
+        This is the planner-level contract that backs the
+        `tests/test_romy_plugin.py::test_romy_judge_isolation_zero_hit_rate_regression_on_audit_19`
+        test: every judge request gets a fresh salt → vLLM APC
+        allocates fresh KV blocks → 0.0 % hit rate between judges.
+        """
+        planner = PrefixSaltPlanner()
+        n = 100
+        salts = [
+            planner.isolated_salt(anchor_hash="x", request_id=f"req_{i}")
+            for i in range(n)
+        ]
+        assert len(salts) == n
+        assert len(set(salts)) == n, (
+            f"isolated salts must be unique per request_id: "
+            f"got {len(set(salts))}/{n} unique "
+            f"(AUDIT #19 baseline requires 0.0 % hit rate between judges)"
+        )
+
+    def test_prefix_salt_planner_shared_path_deterministic(self):
+        """10 calls to shared_salt with the same (anchor_hash,
+        cla_group) inputs all return the same salt.
+
+        This is the determinism precondition for the AUDIT #19
+        84.7 % shared APC hit rate: if shared_salt were not
+        deterministic, vLLM would not key the same anchor to the
+        same block-hash and the 84.7 % baseline would break.
+        """
+        planner = PrefixSaltPlanner()
+        n = 10
+        salts = [
+            planner.shared_salt(anchor_hash="x", cla_group="default")
+            for _ in range(n)
+        ]
+        assert len(salts) == n
+        assert len(set(salts)) == 1, (
+            f"shared salts must be deterministic: expected 1 unique "
+            f"shared salt across {n} calls, got {len(set(salts))}"
+        )
+        # And: the shared path must NOT include a request_id signal
+        # (otherwise it would behave like the isolated path).
+        first = salts[0]
+        for s in salts:
+            assert s == first

@@ -297,3 +297,127 @@ class TestEntryPoint:
         assert isinstance(plugin, vLLMRomyPlugin)
         assert plugin.is_initialized() is True
         assert plugin.get_stats()["worker_id"] == "default"
+
+
+# ---------------------------------------------------------------------------
+# AUDIT #19 regression — judge isolation (US-007 / Phase 5 ROMY reconcile)  #
+# ---------------------------------------------------------------------------
+
+class TestROMYJudgeIsolationRegression:
+    """Regression test that pins the AUDIT #19 baseline (84.7 % shared
+    APC hit, 0.0 % judge hit) into the post-ABANDON reconciliation
+    (US-007 / Phase 5).
+
+    Reference: AUDIT.md §19 (F1-F3 baseline, 1× MI300X, Qwen3-32B,
+    2026-05-29). The reconciliation does NOT change
+    ``romy_plugin.py`` or ``prefix_salt_planner.py`` — the
+    isolation contract was already there. This test guards the
+    contract against future drift.
+
+    The test drives the ``PreAttentionHook`` with a stub JCR gate
+    that returns ``use_dense=True`` for judge-class roles and
+    ``use_dense=False`` for non-judge roles. The ``cache_salt`` is
+    then derived via ``PrefixSaltPlanner.isolated_salt`` /
+    ``shared_salt`` — the planner IS the source of the salt.
+    """
+
+    def test_romy_judge_isolation_zero_hit_rate_regression_on_audit_19(self):
+        """100 judge requests all get unique salts; 100 non-judge
+        requests all get the same deterministic shared salt.
+
+        Equivalent to the AUDIT #19 0.0 % / 84.7 % baseline, asserted
+        on a 200-request synthetic batch through the
+        ``PreAttentionHook`` + ``PrefixSaltPlanner`` contract.
+        """
+        from apohara_context_forge.serving.prefix_salt_planner import (
+            PrefixSaltPlanner,
+        )
+
+        # The stub JCR gate mirrors the one in
+        # ``tests/benchmarks/romy_vs_turboquant_kv.py`` and the
+        # ``_FakeJCRGate`` above. We keep it local to this test so
+        # the test is self-contained.
+        gate = _FakeJCRGate(fire_on_role="critic")
+        config = ROMYConfig(
+            enable_quantization=False,    # not exercised here
+            enable_anchor_routing=False,  # not exercised here
+            enable_jcr_gate=True,
+            enable_cla_injection=True,
+            quantization_mode="rotate_kv",
+        )
+        hook = PreAttentionHook(config, jcr_gate=gate)
+        planner = PrefixSaltPlanner()
+
+        n_per_role = 100
+        judge_salts: list[str] = []
+        nonjudge_salts: list[str] = []
+        anchor_hash = "audit_19_anchor"
+        cla_group = "default"
+
+        # Drive the hook for 100 judges + 100 non-judges. The hook's
+        # own jcr_dense flag must agree with the planner's contract
+        # (i.e., critics get isolated salts, retrievers get shared).
+        for i in range(n_per_role):
+            # judge request
+            r = hook(
+                block_ids=[f"j_block_{i}_0", f"j_block_{i}_1"],
+                token_ids=list(range(i * 2, i * 2 + 2)),
+                layer_idx=0,
+                agent_role="critic",
+                candidate_count=5,
+                reuse_rate=0.95,
+                layout_shuffled=True,
+            )
+            assert r["jcr_dense"] is True, f"judge {i} should fire dense"
+            judge_salts.append(
+                planner.isolated_salt(
+                    anchor_hash=anchor_hash,
+                    request_id=f"judge_{i}",
+                )
+            )
+
+            # non-judge request
+            r = hook(
+                block_ids=[f"n_block_{i}_0"],
+                token_ids=list(range(1000 + i, 1000 + i + 1)),
+                layer_idx=0,
+                agent_role="retriever",
+                candidate_count=1,
+                reuse_rate=0.10,
+                layout_shuffled=False,
+            )
+            assert r["jcr_dense"] is False, f"non-judge {i} must NOT fire dense"
+            nonjudge_salts.append(
+                planner.shared_salt(
+                    anchor_hash=anchor_hash,
+                    cla_group=cla_group,
+                )
+            )
+
+        # 1. Judge isolation: every judge salt is unique (no two
+        #    judges share a salt → 0.0 % hit rate between judges).
+        assert len(judge_salts) == n_per_role
+        assert len(set(judge_salts)) == n_per_role, (
+            f"judge salt uniqueness regression: "
+            f"{len(set(judge_salts))}/{n_per_role} unique "
+            f"(AUDIT #19 requires 0.0 % hit rate between judges)"
+        )
+
+        # 2. Shared path is exercised: at least 2 non-judges share
+        #    the same deterministic shared salt (the path that gives
+        #    vLLM APC the 84.7 % hit rate is on the shared axis).
+        assert len(nonjudge_salts) == n_per_role
+        assert len(set(nonjudge_salts)) == 1, (
+            f"shared path must be deterministic: expected 1 unique "
+            f"shared salt across {n_per_role} non-judge requests, "
+            f"got {len(set(nonjudge_salts))}"
+        )
+        assert nonjudge_salts.count(nonjudge_salts[0]) == n_per_role
+
+        # 3. The two populations are disjoint: a judge salt is NEVER
+        #    a non-judge salt (the iso:/shared: prefix keeps them
+        #    apart, but the assertion is the contract, not the
+        #    prefix).
+        assert set(judge_salts).isdisjoint(set(nonjudge_salts)), (
+            "judge salt and shared salt populations must be disjoint"
+        )

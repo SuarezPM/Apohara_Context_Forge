@@ -1,0 +1,19 @@
+[package]
+name = "turboquant-turing"
+version = "0.1.0"
+edition = "2021"
+description = "TurboQuant KV cache quantization, re-derived for CC 7.5 (Turing). Workgroup size 32."
+license = "Apache-2.0"
+
+[lib]
+name = "turboquant_turing"
+# `cdylib` is what maturin packages into the Python wheel; `rlib` is
+# what `cargo test` consumes to link integration tests against the
+# public API. Both are emitted by `cargo build --release`.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["compute_75"]
+compute_75 = []
+compute_80 = []
+compute_90 = []
