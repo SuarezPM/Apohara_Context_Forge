@@ -79,6 +79,30 @@ dev = [
 verify = [
   "z3-solver>=4.12",
 ]
+# apohara2 = optional extra for the Apohara 2.0 RAG + compression stack.
+# Captured 2026-06-11 per .omc/plans/apohara-2-0.md Step 0.1.
+# NOTE on `turbovec`: the Python wrapper is a placeholder until the
+# `turboquant-turing` Rust crate (Phase 4) ships a maturin-built wheel to
+# PyPI. The retrieval/ module's TurbovecStore class is a NotImplementedError
+# stub (US-002 placeholder; real impl in US-004). Installing this extra on
+# a host without `turbovec` on PyPI will log a resolution failure for that
+# one dependency and the install will fail; the other deps install cleanly.
+# Per the US-002 brief: "the turbovec_store.py placeholder is what runs in
+# tests", so a failed turbovec resolution is the expected pre-Phase-4 state.
+apohara2 = [
+  "turbovec>=0.1",  # placeholder; not on PyPI yet. Real impl ships in US-004.
+  "sentence-transformers>=3.3,<4",  # granite-embedding-311m-multilingual-r2 host
+  "llmlingua>=0.2.2,<0.3",          # already in [serve]; repeated for clarity
+]
+
+# Toolchain note (per R11 mitigation in apohara-2-0.md):
+#   cargo 1.96.0 + maturin 1.13.3 are CLI tools required to build the
+#   in-tree `turboquant-turing` Rust crate (Phase 4). They are intentionally
+#   NOT listed in [build-system].requires (the project still builds with
+#   setuptools.build_meta for the slim install path) and NOT listed under
+#   [project.optional-dependencies] (they are build-time, not runtime).
+#   The captured versions live at
+#   docs/research/reconcile/apohara2-toolchain.md.
 
 [project.urls]
 Homepage      = "https://github.com/SuarezPM/Apohara_Context_Forge"

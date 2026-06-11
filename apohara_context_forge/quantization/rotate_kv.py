@@ -178,9 +178,23 @@ class RotateKVQuantizer:
         keys_body = key_states[:, sink_count:, :, :]
         values_body = value_states[:, sink_count:, :, :]
         
-        # Quantize body (non-sink) as INT4
-        keys_int4, scales_k, zero_points_k = self._quantize_block(keys_body)
-        values_int4, scales_v, zero_points_v = self._quantize_block(values_body)
+        # Quantize body (non-sink) as INT4.
+        # AUDIT #320 wiring fix: when use_fwht=True, the FWHT-expanded signal
+        # destroys the per-byte V7 codec (200x MSE degradation). Dispatch to
+        # CodecV8Quantizer._quantize_block (per-nibble independent scales) so
+        # FWHT benefit is recovered. The per-byte V7 path is preserved for
+        # use_fwht=False (zero behavior change for non-FWHT callers).
+        # NOTE: deferred import — codec_v8 imports from this module (parent
+        # class), so a top-level import would form a cycle.
+        if cfg.use_fwht:
+            from apohara_context_forge.quantization.codec_v8 import CodecV8Quantizer
+
+            v8_quantizer = CodecV8Quantizer(self._config)
+            keys_int4, scales_k, zero_points_k = v8_quantizer._quantize_block(keys_body)
+            values_int4, scales_v, zero_points_v = v8_quantizer._quantize_block(values_body)
+        else:
+            keys_int4, scales_k, zero_points_k = self._quantize_block(keys_body)
+            values_int4, scales_v, zero_points_v = self._quantize_block(values_body)
         
         # Create QuantizedKVBlock
         block = QuantizedKVBlock(
@@ -307,10 +321,25 @@ class RotateKVQuantizer:
             Tuple of (key_states_fp16, value_states_fp16) both shape (batch, seq, num_heads, head_dim)
         """
         cfg = self._config
-        
-        # Dequantize body (non-sink)
-        keys_body = self._dequantize_block(block.keys_int4, block.scales_k, block.zero_points_k, cfg.group_size)
-        values_body = self._dequantize_block(block.values_int4, block.scales_v, block.zero_points_v, cfg.group_size)
+
+        # AUDIT #320 wiring fix: when use_fwht=True, the block was produced
+        # by CodecV8Quantizer._quantize_block (per-nibble scales, trailing
+        # pair axis on scales/zp). The matching dequantize must be V8's too,
+        # otherwise the V7 per-byte dequantize broadcasts wrong. Same
+        # deferred import as quantize_pre_rope (cycle avoidance).
+        if cfg.use_fwht:
+            from apohara_context_forge.quantization.codec_v8 import CodecV8Quantizer
+
+            v8_quantizer = CodecV8Quantizer(self._config)
+            keys_body = v8_quantizer._dequantize_block(
+                block.keys_int4, block.scales_k, block.zero_points_k, cfg.group_size
+            )
+            values_body = v8_quantizer._dequantize_block(
+                block.values_int4, block.scales_v, block.zero_points_v, cfg.group_size
+            )
+        else:
+            keys_body = self._dequantize_block(block.keys_int4, block.scales_k, block.zero_points_k, cfg.group_size)
+            values_body = self._dequantize_block(block.values_int4, block.scales_v, block.zero_points_v, cfg.group_size)
         
         # Concatenate sink (FP16) + body (dequantized)
         keys_fp16 = np.concatenate([block.keys_sink_fp16, keys_body], axis=1).astype(np.float32)

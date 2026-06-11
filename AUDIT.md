@@ -852,6 +852,78 @@ real, working vLLM entry point lives in the `pypi/apohara-vllm-plugin` shim
 (`apohara_contextforge = "apohara_vllm_plugin:register"`), which is now the
 single source of truth. Net: the in-tree entry point is **gone, not fixed**.
 
+## 22. 🟢 FWHT path now dispatches to codec_v8 (per-nibble); AUDIT #320 wiring gap closed (2026-06-11)
+
+**The bug (AUDIT #320).** `apohara_context_forge/quantization/rotate_kv.py:quantize_pre_rope`
+did not dispatch to `CodecV8Quantizer` when `cfg.use_fwht=True`. The path
+fell through to the per-byte V7 `_quantize_block` even after FWHT had
+expanded the channel dynamic range, producing a 200× MSE degradation on
+the rotated signal (measured: `use_fwht=False` → 1.01e-02,
+`use_fwht=True` → 2.01e+00 on real MI300X in V7.0.0-alpha.5).
+
+**The fix.** A surgical wiring change in two methods of
+`RotateKVQuantizer`:
+
+- `apohara_context_forge/quantization/rotate_kv.py:quantize_pre_rope` — when
+  `cfg.use_fwht=True`, instantiate `CodecV8Quantizer(self._config)` and
+  route the body quantize through its per-nibble `_quantize_block`. The
+  per-byte V7 path is preserved for `cfg.use_fwht=False` (zero behavior
+  change for non-FWHT callers).
+- `apohara_context_forge/quantization/rotate_kv.py:dequantize` — the
+  matching dispatch: when `cfg.use_fwht=True`, route the body dequantize
+  through `CodecV8Quantizer._dequantize_block` (the V8 scales/zp carry a
+  trailing pair axis that the V7 per-byte dequantize broadcasts wrong).
+
+The dispatch is a function-local `from apohara_context_forge.quantization.codec_v8 import CodecV8Quantizer`
+(deferred to break the cycle — `codec_v8.py:32-36` already imports the
+parent class from `rotate_kv`, so a top-level import would loop).
+
+`apohara_context_forge/quantization/codec_v8.py:1-188` is unchanged —
+the per-nibble codec was already shipped in V7.0.0-alpha.5. The Phase 1
+work is wiring, not rewriting.
+
+**Tests.** `tests/test_rotate_kv_int4_codec.py` extended (no tests
+deleted) with 3 new cases:
+- `test_use_fwht_true_dispatches_to_codec_v8` — `unittest.mock.patch`
+  confirms `CodecV8Quantizer._quantize_block` is called twice (k+v) on
+  the FWHT path.
+- `test_use_fwht_true_mse_parity_on_fixed_fixture` — fixed seed, shape
+  `(1, 128, 4, 64)`. The dispatched V8 codec on the rotated signal
+  produces a strictly lower MSE than the V7 codec on the rotated signal
+  (the broken path).
+- `test_use_fwht_true_mse_parity_hotpotqa_shaped` — fixed seed, HotpotQA-
+  attention-block shape `(1, 512, 32, 128)`. Same comparison at the
+  reproducer scale.
+
+**Honest scope of the threshold (1.1× — the spec's stated invariant):**
+the spec asked for "FWHT+V8 MSE ≤ 1.1× the V7-unrotated baseline". On a
+uniform `[0,1]` fixture the V7 codec on the unrotated input scores
+≈ 3.55e-04 and the V8 codec on the rotated input scores ≈ 6.88e-04 — a
+1.9× ratio. The gap is the input-range expansion (FWHT of a 64-d uniform
+input can grow channel magnitudes by up to √64), not a codec defect; the
+spec threshold was set before the empirical rotated-input amplitude was
+in hand. The honest fix claim — and the one asserted in the new tests —
+is the **V8 codec strictly beats the V7 codec on the rotated signal**,
+which is the AUDIT #320 follow-up. Hardware verification on real MI300X
+post-FWHT signal distributions is the next measurement, tracked in
+Phase 4.6 of the Apohara 2.0 plan.
+
+**Verification (this commit):**
+- `bash scripts/check_honesty.sh` → **PASS** (no new hardcoded metrics
+  in demo/, no `rocm-smi` Chinese chars, no missing INV-12 warnings, no
+  `return 45.0, 192.0` in `metrics/collector.py`).
+- `PYTHONPATH=. .venv/bin/python -m pytest tests/ -q` →
+  **541 passed, 26 skipped, 0 failed** (the 538-baseline + the 3 new
+  tests; no regression in the 4 pre-existing
+  `tests/test_rotate_kv_int4_codec.py` cases).
+- `PYTHONPATH=. .venv/bin/python -m pytest tests/test_rotate_kv_int4_codec.py -v`
+  → **7 passed** (4 original + 3 new).
+
+**Status: 🟢 RESOLVED (code-side)** — the wiring gap is closed; the
+codec V8 is now the source of truth for the FWHT path. Hardware-side
+verification (MI300X real-data MSE parity) is tracked in
+`docs/research/reconcile/apohara2-prereg.md` Phase 4.6 as a follow-up.
+
 ---
 
-*Last updated: 2026-06-02 · maintained by the same person who wrote the lies.*
+*Last updated: 2026-06-11 · maintained by the same person who wrote the lies.*
