@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/contextforge-banner.jpg" alt="APOHARA · ContextForge — the first formally-verified safety layer for multi-agent LLM pipelines" width="100%">
+  <img src="assets/banner.svg" alt="APOHARA · ContextForge — the first formally-verified safety layer for multi-agent LLM pipelines" width="100%">
 </p>
 
 <h1 align="center">APOHARA&nbsp;·&nbsp;ContextForge</h1>

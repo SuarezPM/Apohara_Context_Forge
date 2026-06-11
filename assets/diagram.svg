@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" width="800" height="500">
+  <title>ContextForge — three-tier verified pipeline</title>
+  <defs>
+    <style>
+      .lbl{font-family:system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:.04em}
+      .m{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    </style>
+  </defs>
+  <rect width="800" height="500" fill="oklch(8% 0.01 260)"/>
+  <rect x="0" y="0" width="2" height="500" fill="oklch(75% 0.16 55)"/>
+  <text x="32" y="44" class="lbl" font-size="20" font-weight="700" fill="oklch(95% 0.01 95)">ContextForge — three-tier pipeline</text>
+  <text x="32" y="64" class="m" font-size="12" fill="oklch(80% 0.16 55)">planner · coder · reviewer  →  INV-15 Z3 verifier  →  tamper-evident ledger</text>
+  <line x1="32" y1="80" x2="768" y2="80" stroke="oklch(28% 0.01 260)" stroke-width="1"/>
+  <g transform="translate(40,110)">
+    <text class="m" font-size="11" fill="oklch(60% 0.01 95)">top · ledger</text>
+    <rect x="0" y="10" width="640" height="64" rx="8" fill="oklch(20% 0.04 55)" stroke="oklch(75% 0.16 55)" stroke-width="1.5"/>
+    <text x="20" y="36" class="lbl" font-size="13" font-weight="700" fill="oklch(95% 0.01 95)">Tamper-evident ledger</text>
+    <text x="20" y="58" class="m" font-size="11" fill="oklch(82% 0.16 55)">block 0417  ·  root 9c4f…  ·  sig 1a8f…</text>
+    <text x="380" y="36" class="m" font-size="11" fill="oklch(80% 0.01 95)">append-only  ·  attested</text>
+  </g>
+  <g transform="translate(40,210)">
+    <text class="m" font-size="11" fill="oklch(60% 0.01 95)">middle · verifier</text>
+    <rect x="0" y="10" width="640" height="120" rx="8" fill="oklch(14% 0.01 260)" stroke="oklch(75% 0.16 55)" stroke-width="1.8"/>
+    <text x="20" y="38" class="lbl" font-size="14" font-weight="700" fill="oklch(95% 0.01 95)">INV-15 Z3 verifier</text>
+    <text x="20" y="58" class="m" font-size="11" fill="oklch(78% 0.01 95)">∀ agents  ·  ∀ steps  ·  intent ≢ exfil  ∧  tool ⊆ allowed</text>
+    <g transform="translate(20,72)">
+      <rect width="180" height="38" rx="4" fill="oklch(20% 0.04 55)" stroke="oklch(75% 0.16 55)" stroke-width="1"/>
+      <text x="12" y="16" class="m" font-size="10" fill="oklch(80% 0.01 95)">violations</text>
+      <text x="12" y="32" class="m" font-size="14" font-weight="700" fill="oklch(82% 0.16 55)">0 / 1,210</text>
+    </g>
+    <g transform="translate(212,72)">
+      <rect width="180" height="38" rx="4" fill="none" stroke="oklch(28% 0.01 260)" stroke-width="1"/>
+      <text x="12" y="16" class="m" font-size="10" fill="oklch(60% 0.01 95)">proofs checked</text>
+      <text x="12" y="32" class="m" font-size="14" font-weight="700" fill="oklch(78% 0.01 95)">1,210 / 1,210</text>
+    </g>
+    <g transform="translate(404,72)">
+      <rect width="216" height="38" rx="4" fill="none" stroke="oklch(28% 0.01 260)" stroke-width="1"/>
+      <text x="12" y="16" class="m" font-size="10" fill="oklch(60% 0.01 95)">solver time</text>
+      <text x="12" y="32" class="m" font-size="14" font-weight="700" fill="oklch(78% 0.01 95)">2.41s  ·  Z3 4.13</text>
+    </g>
+  </g>
+  <g transform="translate(40,360)">
+    <text class="m" font-size="11" fill="oklch(60% 0.01 95)">bottom · pipeline</text>
+    <g transform="translate(0,10)">
+      <rect width="200" height="70" rx="8" fill="oklch(14% 0.01 260)" stroke="oklch(75% 0.16 55)" stroke-width="1.2"/>
+      <text x="14" y="22" class="m" font-size="11" fill="oklch(80% 0.16 55)">agent 01</text>
+      <text x="14" y="42" class="lbl" font-size="14" font-weight="700" fill="oklch(95% 0.01 95)">planner</text>
+      <text x="14" y="60" class="m" font-size="10" fill="oklch(60% 0.01 95)">steps 1–18</text>
+    </g>
+    <g transform="translate(220,10)">
+      <rect width="200" height="70" rx="8" fill="oklch(14% 0.01 260)" stroke="oklch(75% 0.16 55)" stroke-width="1.2"/>
+      <text x="14" y="22" class="m" font-size="11" fill="oklch(80% 0.16 55)">agent 02</text>
+      <text x="14" y="42" class="lbl" font-size="14" font-weight="700" fill="oklch(95% 0.01 95)">coder</text>
+      <text x="14" y="60" class="m" font-size="10" fill="oklch(60% 0.01 95)">edits  a1b2 c3</text>
+    </g>
+    <g transform="translate(440,10)">
+      <rect width="200" height="70" rx="8" fill="oklch(14% 0.01 260)" stroke="oklch(75% 0.16 55)" stroke-width="1.2"/>
+      <text x="14" y="22" class="m" font-size="11" fill="oklch(80% 0.16 55)">agent 03</text>
+      <text x="14" y="42" class="lbl" font-size="14" font-weight="700" fill="oklch(95% 0.01 95)">reviewer</text>
+      <text x="14" y="60" class="m" font-size="10" fill="oklch(60% 0.01 95)">attest  0.97</text>
+    </g>
+  </g>
+  <g transform="translate(700,160)">
+    <rect width="80" height="40" rx="4" fill="oklch(20% 0.04 25)" stroke="oklch(65% 0.22 25)" stroke-width="1.5"/>
+    <text x="40" y="18" class="m" font-size="9" fill="oklch(80% 0.22 25)" text-anchor="middle">kv-cache</text>
+    <text x="40" y="32" class="m" font-size="9" fill="oklch(80% 0.22 25)" text-anchor="middle">reuse</text>
+  </g>
+  <g stroke="oklch(28% 0.01 260)" stroke-width="1.2" fill="none" stroke-dasharray="3 3">
+    <path d="M 640 200 Q 700 200 700 180"/>
+  </g>
+  <g stroke="oklch(65% 0.22 25)" stroke-width="1.5" fill="none">
+    <path d="M 700 200 L 700 240 L 540 270"/>
+  </g>
+  <text x="540" y="290" class="m" font-size="10" fill="oklch(80% 0.22 25)">REFUSED · INV-15  ·  cross-agent cache reuse</text>
+  <text x="32" y="478" class="m" font-size="11" fill="oklch(60% 0.01 95)">APOHARA / contextforge</text>
+</svg>
