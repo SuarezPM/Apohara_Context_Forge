@@ -32,10 +32,15 @@ helpers in a leaf module makes the test fast and surgical.
 
 from __future__ import annotations
 
+import functools
+import logging
 import math
+import os
 import random
 import re
 from typing import Any, List, Sequence, Tuple
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -580,3 +585,70 @@ def _summary_first_sentence_overlap(predicted: str, expected: str) -> float:
     pred_ngrams = {tuple(pred_tokens[i : i + n]) for i in range(len(pred_tokens) - n + 1)}
     exp_ngrams = {tuple(exp_tokens[i : i + n]) for i in range(len(exp_tokens) - n + 1)}
     return 1.0 if (pred_ngrams & exp_ngrams) else 0.0
+
+
+# ---------------------------------------------------------------------------
+# _load_qwen3_1_7b_cached — AUDIT #28 real-mode fixture
+# ---------------------------------------------------------------------------
+#
+# Lazy-loaded Qwen3-1.7B pair (model, tokenizer) gated on
+# LLMLINGUA_REAL=1. Used by `bench_compress._run_one` to compute
+# `_real_downstream_ppl` on each prompt. The lru_cache(maxsize=1)
+# ensures the model is loaded at most once per Python process —
+# both `bench_compress` and the test suite (under LLMLINGUA_REAL=1)
+# share the same instance.
+#
+# CI is opt-in: the env var must be set explicitly. Default mode
+# is the constant stub (slim venv has no torch / transformers).
+#
+# `pytest.mark.slow` is the user-side gate. The bench honors it
+# via the same env var; the unit tests add the marker for
+# `pytest -m 'not slow'` to skip on CI by default.
+
+
+def _llmlingua_real_enabled() -> bool:
+    """True when the user opted into real downstream-LM mode."""
+    return os.environ.get("LLMLINGUA_REAL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _load_qwen3_1_7b_cached() -> Tuple[Any, Any]:
+    """Load `Qwen/Qwen3-1.7B` in FP16 once per process. AUDIT #28.
+
+    Gated on `LLMLINGUA_REAL=1` (else raises RuntimeError so the
+    bench falls back to the constant stub). Uses
+    `transformers.AutoModelForCausalLM` + `AutoTokenizer`. FP16 on
+    CUDA, full precision on CPU. The model is loaded on the first
+    call; subsequent calls hit the `lru_cache` and return the
+    same `(model, tokenizer)` tuple.
+
+    The function deliberately does NOT call `release()`: the
+    `lru_cache` keeps the model alive for the rest of the process
+    lifetime. To free memory, restart the process (the standard
+    pattern for opt-in real-mode benches).
+    """
+    if not _llmlingua_real_enabled():
+        raise RuntimeError(
+            "_load_qwen3_1_7b_cached called without LLMLINGUA_REAL=1; "
+            "the slim venv has no torch / transformers and the bench "
+            "must run on the constant stub."
+        )
+    import torch  # local — keeps stub path torch-free
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
+
+    model_id = "Qwen/Qwen3-1.7B"
+    log.info("[AUDIT #28] loading %s (LLMLINGUA_REAL=1)", model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if device == "cuda" else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, torch_dtype=dtype
+    )
+    model = model.to(device)
+    model.eval()
+    log.info("[AUDIT #28] %s loaded on %s (%s)", model_id, device, dtype)
+    return (model, tokenizer)

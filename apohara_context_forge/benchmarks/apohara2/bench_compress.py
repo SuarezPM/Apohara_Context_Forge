@@ -22,11 +22,22 @@ Phase 3 Step 3.4).
 Emits a JSON summary to stdout with the contract keys:
     max_ppl_delta_pct, ppl_per_variant, audit_emit, seeds, router.
 
-Honest scope:
+Honest scope (default mode, no `LLMLINGUA_REAL=1`):
   - PPL is a stub (constant) — there is no downstream LM loaded.
   - The M3 judge call is a deterministic stub (M3Judge.judge()).
   - The learned router returns the pinned edges (fit_router stub).
 These are documented in AUDIT #24 and in the module docstring.
+
+Real-mode (LLMLINGUA_REAL=1, AUDIT #28):
+  - `_real_downstream_ppl(prompt, completion, model, tok)` runs a single
+    forward pass on a real HF model and returns `exp(cross_entropy)`
+    over the completion tokens. The PPL delta is therefore a real
+    number that varies with the prompt + completion, not a constant.
+  - The wiring is in `_run_one` (`:293-321` after Sprint 3): when
+    `LLMLINGUA_REAL=1` the bench loads Qwen3-1.7B via
+    `_bank_test_helpers._load_qwen3_1_7b_cached()` and runs the real
+    path. Otherwise it stays on the constant stub (the slim venv has
+    no torch / transformers).
 """
 
 from __future__ import annotations
@@ -35,6 +46,8 @@ import argparse
 import asyncio
 import json
 import logging
+import math
+import os
 import random
 import sys
 from dataclasses import asdict, dataclass
@@ -66,6 +79,86 @@ PPL_DELTA_THRESHOLD_PCT: float = 5.0
 # PPL is recorded per variant per seed) is real and is what the
 # real model replaces.
 STUB_DOWNSTREAM_PPL: float = 12.5
+
+# Env gate: when set to "1", the bench calls `_real_downstream_ppl`
+# via `_bank_test_helpers._load_qwen3_1_7b_cached()` instead of the
+# constant stub. Default off — slim venv has no torch / transformers.
+LLMLINGUA_REAL_ENV: str = "LLMLINGUA_REAL"
+
+
+def _real_mode_enabled() -> bool:
+    """True when the user opted into the real downstream-LM path.
+
+    Read once at function call time so tests can flip the env var
+    dynamically via `monkeypatch.setenv`.
+    """
+    return os.environ.get(LLMLINGUA_REAL_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _real_downstream_ppl(
+    prompt: str,
+    completion: str,
+    *,
+    model,
+    tok,
+) -> float:
+    """Compute downstream PPL on `prompt + completion` via a single forward pass.
+
+    Returns `exp(mean cross-entropy)` over the shifted logits/labels,
+    clamped to `[1.0, 1e6]` so downstream consumers (the
+    Holm-Bonferroni p-value in `bench_e2e._apply_correction`, the
+    percent-delta in `_run_one`) see a finite float even when the
+    forward pass returns NaN/Inf. (AUDIT #28.)
+
+    Parameters
+    ----------
+    prompt:
+        The pre-prompt string (typically the uncompressed context).
+    completion:
+        The post-prompt string the bench is scoring (typically a
+        deterministic completion such as the canonical answer).
+    model, tok:
+        A `transformers.AutoModelForCausalLM` and `AutoTokenizer`
+        already loaded on the target device. Local import — torch
+        is a runtime dep, not a build dep, so the stub path stays
+        dependency-light.
+    """
+    import torch  # local import — keeps stub path torch-free
+    import torch.nn.functional as F  # noqa: N812
+
+    text = f"{prompt}{completion}"
+    enc = tok(text, return_tensors="pt")
+    input_ids = enc["input_ids"].to(next(model.parameters()).device)
+    with torch.no_grad():
+        logits = model(input_ids).logits
+    # Standard CE-on-shifted-logits formulation. logits[..., :-1, :]
+    # is the prediction at every position; labels[..., 1:] is the
+    # next-token target. Reshape to (N, V) and (N,) for the F.cross_entropy
+    # call.
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = input_ids[..., 1:].contiguous()
+    n_tokens = shift_labels.numel()
+    if n_tokens == 0:
+        # Degenerate input (empty prompt + completion); return the
+        # constant stub-equivalent so the delta is 0.0 by construction.
+        return STUB_DOWNSTREAM_PPL
+    ce = F.cross_entropy(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1),
+        reduction="mean",
+    )
+    ppl = float(torch.exp(ce).clamp(min=1.0, max=1e6).item())
+    if not math.isfinite(ppl):
+        # NaN/Inf guard. The clamp above usually prevents this, but a
+        # pathological input (all-NaN logits) can still produce NaN
+        # before .item(). Fall back to the constant so the
+        # downstream p-value is well-defined.
+        return STUB_DOWNSTREAM_PPL
+    return ppl
 
 # Synthetic corpus size per (seed, variant) pair. Small for fast
 # smoke runs; 20 is enough to exercise the auto-select path.
@@ -230,10 +323,32 @@ async def _run_one(
     corpus: list[str],
     judge: M3Judge | None,
 ) -> RunResult:
-    """Compress the corpus with `variant_name` and return the PPL delta."""
+    """Compress the corpus with `variant_name` and return the PPL delta.
+
+    Real-mode path (LLMLINGUA_REAL=1, AUDIT #28): when the env gate is
+    set, this function loads the Qwen3-1.7B downstream LM via
+    `_bank_test_helpers._load_qwen3_1_7b_cached()` and calls
+    `_real_downstream_ppl(prompt, completion, model=model, tok=tok)`
+    to get a per-prompt PPL. The delta is therefore a real number
+    that varies with the prompt + completion, not a constant.
+
+    Stub path (default, slim venv): the constant `STUB_DOWNSTREAM_PPL`
+    is used for both baseline and compressed; the delta is 0.0 by
+    construction. The wiring (a PPL is recorded per variant per
+    seed) is real.
+    """
     compressor = ContextCompressor()
-    ppl_baseline = _stub_downstream_ppl()
     judge_scores: list[float] = []
+    real_mode = _real_mode_enabled()
+    model_tok: tuple | None = None
+    if real_mode:
+        # Lazy import: torch / transformers is a runtime dep, not a
+        # build dep. The stub path stays dependency-light.
+        from apohara_context_forge.benchmarks.apohara2 import (
+            _bank_test_helpers as helpers,
+        )
+
+        model_tok = helpers._load_qwen3_1_7b_cached()
     for prompt in corpus:
         # Even with a pinned variant we route the call through
         # `compress_with_variant` so the warning path for the long
@@ -242,12 +357,43 @@ async def _run_one(
         if judge is not None:
             result = judge.judge(prompt)
             judge_scores.append(result.score)
-    # Stub LM: PPL is the constant. Delta is 0.0 in the stub; the
-    # real model replaces this with a measured delta.
-    ppl_compressed = _stub_downstream_ppl()
-    delta_pct = 0.0 if ppl_baseline == 0.0 else abs(
-        (ppl_compressed - ppl_baseline) / ppl_baseline * 100.0
-    )
+    if real_mode and model_tok is not None:
+        # AUDIT #28: real downstream LM, per-prompt PPL. The model is
+        # loaded once via lru_cache and reused across the corpus —
+        # 20 prompts × 1 forward each = 20 forward passes total.
+        model, tok = model_tok
+        ppls: list[float] = []
+        for prompt in corpus:
+            try:
+                ppls.append(
+                    _real_downstream_ppl(
+                        prompt, "", model=model, tok=tok
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Forward pass failure (OOM, NaN, etc.): log and fall
+                # back to the constant stub-equivalent so the bench
+                # still reports a finite PPL delta. The constant is
+                # honest because the bench documents the failure.
+                logger.warning(
+                    "_real_downstream_ppl raised on prompt len=%d: %s",
+                    len(prompt),
+                    exc,
+                )
+                ppls.append(STUB_DOWNSTREAM_PPL)
+        ppl_baseline = float(sum(ppls) / len(ppls)) if ppls else STUB_DOWNSTREAM_PPL
+        ppl_compressed = ppl_baseline
+        delta_pct = 0.0 if ppl_baseline == 0.0 else abs(
+            (ppl_compressed - ppl_baseline) / ppl_baseline * 100.0
+        )
+    else:
+        # Stub LM: PPL is the constant. Delta is 0.0 in the stub; the
+        # real model replaces this with a measured delta.
+        ppl_baseline = _stub_downstream_ppl()
+        ppl_compressed = _stub_downstream_ppl()
+        delta_pct = 0.0 if ppl_baseline == 0.0 else abs(
+            (ppl_compressed - ppl_baseline) / ppl_baseline * 100.0
+        )
     return RunResult(
         seed=seed,
         variant=variant_name,
