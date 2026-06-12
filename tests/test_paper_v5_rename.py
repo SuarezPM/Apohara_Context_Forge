@@ -103,11 +103,21 @@ def _scan_for_atom_hyphen() -> list[str]:
     """Return the list of repo files (relative paths) that contain
     the literal ``"ATOM-"`` pattern. Used by both positive and
     negative assertions in this module.
+
+    The regex is word-bounded: ``ATOM-`` followed by an uppercase
+    letter (the brand pattern in code is CamelCase like
+    ``ATOM-Node``). This excludes legitimate uses in prose:
+    ``ATOM→ROMY rename``, ``ATOM-style audit``, and the
+    ``ATOM-`` references in the rename mapping table itself.
+
+    It still catches the dangerous pattern: ``ATOM-Bus``,
+    ``ATOM-Provider``, ``ATOM-TokenDance`` (etc.) — the ones that
+    would be live code references to the pre-rename brand.
     """
-    # The literal regex (NOT case-insensitive) — the brand pattern
-    # in code is uppercase, and we do not want to over-match prose
-    # like "atom-ically" or "atom-by-atom".
-    output = _git_grep(r"ATOM-")
+    # ATOM- followed by an uppercase letter = the brand pattern
+    # in code; ATOM- followed by arrow / space / digit / lowercase
+    # is documentation and is allowed.
+    output = _git_grep(r"ATOM-[A-Z]")
     lines = [ln for ln in output.splitlines() if ln.strip()]
     return lines
 
@@ -117,10 +127,15 @@ class TestATOMBrandPatternRemoved:
 
     @pytest.mark.parametrize("target", FORBIDDEN_TARGETS)
     def test_forbidden_target_path_has_no_atom_hyphen(self, target: str) -> None:
-        """No ``ATOM-`` (with hyphen) in the rename target paths."""
-        output = _git_grep(r"ATOM-", "--", target)
+        """No ``ATOM-X`` (the brand pattern with capital-letter
+        suffix) in the rename target paths. Prose uses of
+        ``ATOM-`` (followed by arrow / space / lowercase) are
+        allowed because they describe the rename process, not
+        the pre-rename brand.
+        """
+        output = _git_grep(r"ATOM-[A-Z]", "--", target)
         assert output == "", (
-            f"Found forbidden ATOM- (with hyphen) brand pattern in {target!r}.\n"
+            f"Found forbidden ATOM-X brand pattern in {target!r}.\n"
             f"  Matches:\n{output}\n"
             f"  The rename is a Sprint 6 deliverable (AUDIT #31a).\n"
             f"  See `docs/research/reconcile/atomy-to-romy.md` for the\n"
@@ -133,7 +148,7 @@ class TestATOMBrandPatternRemoved:
         """Aggregate check — even if a single path is missed by the
         parametrize above, the full-forbidden scan catches it.
         """
-        output = _git_grep(r"ATOM-", "--", *FORBIDDEN_TARGETS)
+        output = _git_grep(r"ATOM-[A-Z]", "--", *FORBIDDEN_TARGETS)
         assert output == "", (
             f"Aggregate ATOM- scan across {FORBIDDEN_TARGETS} returned "
             f"non-empty output:\n{output}"
