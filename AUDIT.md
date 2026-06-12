@@ -3264,3 +3264,51 @@ model is the durable artifact.
 — the threat model ships; the actual PR to
 `vllm-project/vllm` is a manual one-shot for Pablo.
 
+
+### AUDIT #post-finalize — stale test removal (2026-06-12)
+
+**What.** During the FINALIZE step of the ralph session, the
+full `pytest` collection failed with an import mismatch:
+
+    ERROR collecting tests/test_vram_monitor.py
+    imported module 'test_vram_monitor' has this __file__ attribute:
+      /home/thelinconx/Documentos/Apohara_Context_Forge/tests/metrics/test_vram_monitor.py
+    which is not the same as the test file we want to collect:
+      /home/thelinconx/Documentos/Apohara_Context_Forge/tests/test_vram_monitor.py
+
+Two files with the same basename existed:
+
+* `tests/test_vram_monitor.py` — the Sprint 5 (5.6 KB,
+  AUDIT #30) test for the `serving.vram_monitor.VRAMMonitor`
+  class. Real, used by `tests/test_bench_wow8gb_smoke.py`.
+
+* `tests/metrics/test_vram_monitor.py` — a stale
+  (1.6 KB, dated 2026-05-27) test for a different module
+  `apohara_context_forge.metrics.vram_monitor` that no
+  longer exists in the tree (the VRAM monitor was moved
+  from `metrics/` to `serving/` in the Sprint 5 commit
+  `1c93153`).
+
+The stale file was the one removed; the new file in
+`tests/` is the canonical one. The fix unblocks pytest
+collection: `775 tests collected, 0 errors`. The targeted
+suite (8 files) still passes 99/0 in 52.85s.
+
+**AUDIT state transitions.** No AUDIT entry flips; this
+is a hygiene fix, not a mechanism change.
+
+**Verification.**
+
+- `find tests -name "__pycache__" -type d -exec rm -rf {} +`
+  (clears stale bytecode that locked the import in the
+  wrong namespace).
+- `rm tests/metrics/test_vram_monitor.py` (the stale file).
+- `PYTHONPATH=. .venv/bin/python -m pytest -q --no-header
+  --collect-only --tb=no` → **775 tests collected in 5.6s,
+  0 collection errors**.
+- `bash scripts/check_honesty.sh` → **PASS** (8 patterns,
+  no change).
+
+**Status: 🟢 GREEN** — the regression is fixed; the
+FINALIZE step of the ralph session completes.
+
