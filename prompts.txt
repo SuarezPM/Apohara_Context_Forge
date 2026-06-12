@@ -1,0 +1,10 @@
+Explain the role of KV-cache compression in modern LLM inference.
+Describe the architecture of a multi-agent judge pipeline and its failure modes.
+What is the difference between automatic prefix caching and manual cross-agent KV sharing?
+How does LLMLingua-2 compress a prompt while preserving its semantic content?
+Compare TurboQuant and Turbovec for KV-cache memory reduction.
+What is a per-block codec, and when does it beat a per-nibble codec?
+Describe the Apohara 2.0 compression stack and its three independent layers.
+How does Rust-accelerated FWHT compare to a numpy implementation for d=128?
+What honest gaps remain in the 2026 LLM safety landscape?
+Propose a reproducible benchmark for KV-cache compression quality.

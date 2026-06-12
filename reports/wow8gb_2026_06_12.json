@@ -1,0 +1,49 @@
+{
+  "bench": "bench_wow8gb",
+  "audit": "#30",
+  "hardware_hint": "RTX 2060 SUPER 8GB",
+  "n_runs": 3,
+  "dry_run": true,
+  "vram_source": "cuda_torch_reserved",
+  "rows": [
+    {
+      "id": "A",
+      "label": "9B Q4_K_M + KV Q8 + LLMLingua-2",
+      "model": "Qwen/Qwen3-9B",
+      "vram_peak_gb": NaN,
+      "tokens_per_sec": NaN,
+      "ppl_delta": NaN,
+      "status": "dry-run",
+      "vram_source": "cuda_torch_reserved",
+      "notes": [
+        "--dry-run: no measurement performed"
+      ]
+    },
+    {
+      "id": "B",
+      "label": "32B Q3_K_S + 46GB RAM offload (honest 'cabe, no es usable')",
+      "model": "Qwen/Qwen3-32B",
+      "vram_peak_gb": NaN,
+      "tokens_per_sec": NaN,
+      "ppl_delta": NaN,
+      "status": "dry-run",
+      "vram_source": "cuda_torch_reserved",
+      "notes": [
+        "--dry-run: no measurement performed"
+      ]
+    },
+    {
+      "id": "C",
+      "label": "35B-A3B MoE Q4_K_M",
+      "model": "Qwen/Qwen3-30B-A3B",
+      "vram_peak_gb": NaN,
+      "tokens_per_sec": NaN,
+      "ppl_delta": NaN,
+      "status": "dry-run",
+      "vram_source": "cuda_torch_reserved",
+      "notes": [
+        "--dry-run: no measurement performed"
+      ]
+    }
+  ]
+}
