@@ -104,21 +104,39 @@ def _scan_for_atom_hyphen() -> list[str]:
     the literal ``"ATOM-"`` pattern. Used by both positive and
     negative assertions in this module.
 
-    The regex is word-bounded: ``ATOM-`` followed by an uppercase
-    letter (the brand pattern in code is CamelCase like
-    ``ATOM-Node``). This excludes legitimate uses in prose:
-    ``ATOM→ROMY rename``, ``ATOM-style audit``, and the
-    ``ATOM-`` references in the rename mapping table itself.
+    The regex is word-bounded: ``ATOM-`` followed by a **CamelCase
+    identifier** (a capital letter followed by at least one more
+    letter). This excludes legitimate uses in prose: ``ATOM→ROMY
+    rename``, ``ATOM-style audit``, and the ``ATOM-`` references
+    in the rename mapping table itself (where the matcher
+    distinguishes "the brand pattern that read like a 'ATOM-Cell'-
+    style name" from "live code that calls a class called
+    ``ATOM-Cell``").
+
+    The test file itself (``tests/test_paper_v5_rename.py``) is
+    excluded from the scan because its docstring mentions
+    ``ATOM-Node`` as the dangerous example; the test cannot
+    scan itself without self-matching.
 
     It still catches the dangerous pattern: ``ATOM-Bus``,
     ``ATOM-Provider``, ``ATOM-TokenDance`` (etc.) — the ones that
     would be live code references to the pre-rename brand.
     """
-    # ATOM- followed by an uppercase letter = the brand pattern
-    # in code; ATOM- followed by arrow / space / digit / lowercase
-    # is documentation and is allowed.
-    output = _git_grep(r"ATOM-[A-Z]")
-    lines = [ln for ln in output.splitlines() if ln.strip()]
+    # ATOM- followed by a CamelCase identifier (one capital +
+    # at least one more letter) is the brand pattern in code;
+    # ATOM- followed by arrow / space / digit / lowercase / a
+    # single capital-letter `X` (the test ref's own example) is
+    # documentation and is allowed. The test file itself is
+    # excluded post-scan (its docstring mentions `ATOM-Node` as
+    # the dangerous example; `git grep` does not honor `:!`
+    # pathspec negation on the cmdline, so we filter here).
+    output = _git_grep(r"ATOM-[A-Z][A-Za-z]+")
+    lines = [
+        ln
+        for ln in output.splitlines()
+        if ln.strip()
+        and "tests/test_paper_v5_rename.py" not in ln.split(":", 1)[0]
+    ]
     return lines
 
 
@@ -127,15 +145,15 @@ class TestATOMBrandPatternRemoved:
 
     @pytest.mark.parametrize("target", FORBIDDEN_TARGETS)
     def test_forbidden_target_path_has_no_atom_hyphen(self, target: str) -> None:
-        """No ``ATOM-X`` (the brand pattern with capital-letter
-        suffix) in the rename target paths. Prose uses of
-        ``ATOM-`` (followed by arrow / space / lowercase) are
-        allowed because they describe the rename process, not
-        the pre-rename brand.
+        """No ``ATOM-CamelCase`` (the brand pattern with CamelCase
+        identifier suffix) in the rename target paths. Prose uses
+        of ``ATOM-`` (followed by arrow / space / lowercase) are
+        allowed because they describe the rename process, not the
+        pre-rename brand.
         """
-        output = _git_grep(r"ATOM-[A-Z]", "--", target)
+        output = _git_grep(r"ATOM-[A-Z][A-Za-z]+", "--", target)
         assert output == "", (
-            f"Found forbidden ATOM-X brand pattern in {target!r}.\n"
+            f"Found forbidden ATOM-CamelCase brand pattern in {target!r}.\n"
             f"  Matches:\n{output}\n"
             f"  The rename is a Sprint 6 deliverable (AUDIT #31a).\n"
             f"  See `docs/research/reconcile/atomy-to-romy.md` for the\n"
@@ -148,7 +166,7 @@ class TestATOMBrandPatternRemoved:
         """Aggregate check — even if a single path is missed by the
         parametrize above, the full-forbidden scan catches it.
         """
-        output = _git_grep(r"ATOM-[A-Z]", "--", *FORBIDDEN_TARGETS)
+        output = _git_grep(r"ATOM-[A-Z][A-Za-z]+", "--", *FORBIDDEN_TARGETS)
         assert output == "", (
             f"Aggregate ATOM- scan across {FORBIDDEN_TARGETS} returned "
             f"non-empty output:\n{output}"

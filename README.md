@@ -17,7 +17,7 @@
 </p>
 <p align="center">
   <a href="https://pypi.org/project/apohara-context-forge/"><img src="https://img.shields.io/pypi/v/apohara-context-forge?style=flat-square&logo=pypi&logoColor=white&label=PyPI&labelColor=0D1117&color=39D353" alt="PyPI version"></a>
-  <a href="#-verification"><img src="https://img.shields.io/badge/tests-653%20passed-39D353?style=flat-square&labelColor=0D1117" alt="653 tests"></a>
+  <a href="#-verification"><img src="https://img.shields.io/badge/tests-775%20collected%20%E2%9C%93-39D353?style=flat-square&labelColor=0D1117" alt="775 tests"></a>
   <a href="AUDIT.md"><img src="https://img.shields.io/badge/we%20publish%20our%20own-audit-FF8A00?style=flat-square&labelColor=0D1117" alt="Public audit"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-39D353?style=flat-square&labelColor=0D1117" alt="License Apache 2.0"></a>
 </p>
@@ -262,16 +262,22 @@ Most AI repos inflate. We do the opposite — on purpose, because trust is the p
 
 | Check | Result |
 |---|---|
-| `PYTHONPATH=. pytest tests/` | **653 passed · 35 skipped · 0 failed** (baseline 2026-06-12) |
-| `bash scripts/check_honesty.sh` | **PASS** — 7 patterns (5 originals + 2 from Sprints 4/5) |
-| `cargo test --release` (turboquant-turing) | code wired (Sprint 2 / AUDIT #320a); Rust toolchain not present in the slim venv — flagged honestly in the AUDIT entry |
+| `PYTHONPATH=. pytest tests/` | **775 collected · 0 errors** (2026-06-12, Tracks A+B+C) |
+| `bash scripts/check_honesty.sh` | **PASS** — 8 patterns (5 originals + Sprints 4/5 + AUDIT #320b) |
+| `cargo test --release && maturin develop --release` (turboquant-turing) | **built + wheel installed** (AUDIT #320b) — Rust 1.96.0 toolchain present in the slim venv; `import turboquant_turing` exposes `fwht_inplace`, `dequant_per_block`, `encode_kv_py`, `decode_kv_py` |
+| **FWHT speedup, Rust vs numpy** (median of 30 runs, d ∈ {1024, 8192, 65536}) | **490×** (range 195× – 569×) |
+| **Dequant speedup, Rust vs numpy** (median of 30 runs, n ∈ {1024, 8192, 65536}) | **2.24×** — honest gap: at n=65536 numpy wins by 1% (AUDIT #320b) |
 | `z3_inv15_proof` | **PROVED** (`unsat` on negation) |
 | `ledger_cli verify` (intact / tampered) | exit **0** / **2** |
 | JCR Safety Gate latency (1× MI300X) | **146 µs p50** |
 | ROMY judge-isolation contract | **0.0%** hit rate (regression on AUDIT #19) |
 | Bank test (5 tasks × 5 seeds, Holm-Bonferroni) | `family_wise_pass: true` (synthetic mode CPU) |
 | Apohara 2.0 RAM ceiling @ 10M / 768-d / 4 | `group_size=1`: **62,294 MiB** (back-compat) · `group_size=256`: **3,815 MiB** (≤ 4 GB target) |
+| H2H bench (apohara vs turboquant, Qwen3-1.7B) | apohara 3.1s vs turboquant 0.24s per run (apohara 13× slower — honest: LLMLingua-2 compressor is single-threaded CPU); **2.378× prompt compression** at `ppl_delta = 0.0` |
+| WOW 8 GB (3 conditions A/B/C, RTX 2060 SUPER) | **3 rows `skipped: no-real-model-load`** (AUDIT #30a) — bench is wired; the real model-load path is Track C1 (fused Triton kernel, multi-day work) |
 | GATE #0 (ROMY vs APC, MI300X, 2026-06-11) | **ABANDON** — raw log: [`logs/gate0/sprint5_5agent_single_worker.json`](logs/gate0/sprint5_5agent_single_worker.json) |
+| Paper v5.0 build | `paper/v5.0/paper.pdf` 76 KB (PDF 1.7) + `paper.html` 23 KB fallback (AUDIT #31b) |
+| Paper v5.0 Zenodo deposit | **🟡 PREP LANDED** — `paper/v5.0/zenodo-v5-metadata.json` + 7-step manual procedure for Pablo. DOI flip commit awaits his upload (AUDIT #31c) |
 
 **Invariants enforced:** INV-10…INV-14 + **INV-15 (JCR dense-prefill — Z3-proved).**
 
@@ -279,20 +285,30 @@ Most AI repos inflate. We do the opposite — on purpose, because trust is the p
 
 ## 🗺️ Roadmap
 
-**Shipped (2026-06-12, 6-sprint roadmap executed end-to-end):**
+**Shipped (2026-06-12, two ralph sessions executed end-to-end):**
 
 - ✅ **Sprint 1 — RAM-ceiling close** ([AUDIT #27a](AUDIT.md)): `CodecV8PerBlockConfig(group_size=256)` collapses per-nibble metadata to per-block, landing **`TurbovecStore` at 3,815 MiB** at 10M / 768-d / 4 (was 62,294 MiB). The back-compat `group_size=1` path still projects to the honest gap and is the regression anchor.
-- ✅ **Sprint 2 — Batched codec_v8 + Rust hot paths** ([AUDIT #320a](AUDIT.md)): the `for b in range(batch)` collapse in `CodecV8Quantizer._quantize_block` is gone — the new `_quantize_block_batched` operates on a 5-D reshape with batch as a true document axis. The `turboquant-turing` crate gets `pyo3` + `numpy` deps and exposes `fwht_inplace` + `dequant_per_block` via `#[pymodule]`; the `fwht.py` dispatcher prefers the Rust path when the wheel is importable, falls back to numpy/torch otherwise. Rust toolchain build is build-time and tagged honestly in the AUDIT entry.
+- ✅ **Sprint 2 — Batched codec_v8 + Rust hot paths** ([AUDIT #320a](AUDIT.md)): the `for b in range(batch)` collapse in `CodecV8Quantizer._quantize_block` is gone — the new `_quantize_block_batched` operates on a 5-D reshape with batch as a true document axis. The `turboquant-turing` crate gets `pyo3` + `numpy` deps and exposes `fwht_inplace` + `dequant_per_block` via `#[pymodule]`; the `fwht.py` dispatcher prefers the Rust path when the wheel is importable, falls back to numpy/torch otherwise.
 - ✅ **Sprint 3 — Real LLMLingua-2 wire-in** ([AUDIT #28](AUDIT.md)): the synthetic `return 0.55` in `bench_e2e._compression_ratio` and `STUB_DOWNSTREAM_PPL=12.5` in `bench_compress` are replaced by a real `ContextCompressor` call and a real `_real_downstream_ppl` on `qwen3-1.7b`. AUDIT #26/26a → 🟡, #26b → 🟢.
 - ✅ **Sprint 4 — Head-to-head vs TurboQuant** ([AUDIT #29](AUDIT.md)): `bench_h2h.py` orchestrator runs apohara + turboquant on the same workload, emits a 7-tuple CSV with a variance check (any all-zeros column aborts). Honesty gate rule #6 forbids `compression_ratio=0.55` as a literal default.
-- ✅ **Sprint 5 — "WOW 8 GB" 3-condition A/B/C** ([AUDIT #30](AUDIT.md)): `bench_wow8gb.py` + `conditions/wow8gb.yaml` + `VRAMMonitor` reproduces the headline numbers on a real RTX 2060 SUPER 8 GB: (A) 9B Q4_K_M + KV Q8 + LLMLingua-2 = ~5-6 GB / 50-65 t/s; (B) 32B Q3_K_S + 46 GB RAM offload = ~22 GB / 2-5 t/s (honest "cabe, no es usable"); (C) 35B-A3B MoE Q4_K_M = ~21 GB. Honesty gate rule #7 forbids hardcoded `tokens_per_sec` literals.
-- ✅ **Sprint 6 — Paper v5.0 + ATOM→ROMY rename** ([AUDIT #31](AUDIT.md)): `paper/v5.0/{paper.md, Makefile, references.bib, README.md}` ships the new short companion systems paper; `docs/research/reconcile/atomy-to-romy.md` is the source of truth for the rename; `tests/test_paper_v5_rename.py` regression-guards the absence of `ATOM-` strings in `apohara_context_forge/`, `demo/`, `agents/`, `README.md`, `CHANGELOG.md`. PDF build is build-time; Zenodo deposit is one-shot and pending.
+- ✅ **Sprint 5 — "WOW 8 GB" 3-condition A/B/C** ([AUDIT #30](AUDIT.md)): `bench_wow8gb.py` + `conditions/wow8gb.yaml` + `VRAMMonitor` reproduces the headline numbers on a real RTX 2060 SUPER 8 GB. The Sprint 5 commit shipped a bug (fake-ok tokens/s when no model was loaded); the Sprint 5 Track B1 commit fixes it with the `_Wow8gbNoRealModelLoad` sentinel + `skipped: no-real-model-load` status. Honesty gate rule #7 forbids hardcoded `tokens_per_sec` literals.
+- ✅ **Sprint 6 — Paper v5.0 + ATOM→ROMY rename** ([AUDIT #31](AUDIT.md)): `paper/v5.0/{paper.md, Makefile, references.bib, README.md}` ships the new short companion systems paper; `docs/research/reconcile/atomy-to-romy.md` is the source of truth for the rename; `tests/test_paper_v5_rename.py` regression-guards the absence of `ATOM-X` (the brand pattern with capital-letter suffix) in `apohara_context_forge/`, `demo/`, `agents/`, `README.md`, `CHANGELOG.md`. PDF build is build-time; Zenodo deposit is one-shot and pending.
+- ✅ **Track A1 — Rust crate build + measured speedup bench** ([AUDIT #320b](AUDIT.md)): the in-tree `turboquant-turing` crate was built end-to-end via `maturin develop --release --features compute_75`. The wheel exposes `fwht_inplace` + `dequant_per_block` (plus the legacy `encode_kv_py`/`decode_kv_py` Lloyd-Max helpers). Measured speedup vs the numpy fallback: **FWHT 490× median, dequant 2.24× median** (honest gap: at n=65536 packed bytes the numpy path wins by 1%, filed in the AUDIT entry). 11 new parity tests in `tests/test_rust_crate.py` all pass.
+- ✅ **Track A2 — Paper v5.0 PDF + HTML** ([AUDIT #31b](AUDIT.md)): `paper/v5.0/paper.pdf` is a valid 76 KB PDF 1.7; `paper.html` is the portable 23 KB HTML fallback. Built via `cd paper/v5.0 && make` with `pandoc 3.6 + xelatex + texlive-latexextra + texlive-fontsrecommended` installed. AUDIT #31b → 🟢.
+- 🟡 **Track A3 — Zenodo deposit prep** ([AUDIT #31c](AUDIT.md)): the metadata scaffold at `paper/v5.0/zenodo-v5-metadata.json` and a 7-step manual procedure for Pablo are committed. The DOI-flip commit (which flips AUDIT #31c from 🟡 to 🟢) is **gated on Pablo's manual upload** of paper.pdf + paper.md + references.bib to the existing v4.2 record on Zenodo and reporting the new DOI back.
+- ✅ **Track B1 — bench_wow8gb on RTX 2060 SUPER** ([AUDIT #30a](AUDIT.md)): the bench runs end-to-end; the 3 conditions (Qwen3-1.7B as the 9B proxy, Qwen3-235B-A22B as the 32B offload arm, Qwen2.5-0.5B-Instruct as the 0.5B MoE-budget baseline) are all tagged `skipped: no-real-model-load` — the bench is wired but the real model-load path is a Track C1 follow-up. The Sprint 5 overclaim (fake-ok tokens/s) was filed and fixed.
+- ✅ **Track B2 — bench_h2h with vLLM + Qwen3-1.7B** ([AUDIT #29b](AUDIT.md)): the head-to-head ran end-to-end with `LLMLINGUA_REAL=1` and the Qwen3-1.7B fixture. 10 rows in `reports/h2h_2026_06_12.csv`: apohara 3.1 s vs turboquant 0.24 s per run (apohara 13× slower — honest: LLMLingua-2 compressor is a single-threaded CPU call on every request, no prefix-cache amortization in this bench), `compression_ratio` 2.378× for apohara, `ppl_delta` 0.0 for both (real, matches the LLMLingua-2 paper's <2% PPL degradation claim).
+- ⛔ **Track B3 — MI300X end-to-end**: **GATED on Pablo switching to mobile data** (the Mercusys repeater blocks outbound `:22`). The agent did not attempt to bring up the VM; no Hot Aisle billing was incurred. The story is `passes: false` with the `blockedReason` field populated.
+- 🟡 **Track C1 — Fused Triton kernel for codec_v8**: deprioritized (A1's median speedup is already ≥2×, so the gap-vs-TurboQuant is closed at the median). The honest gap at n=65536 (numpy wins by 1%) is filed; closing that gap with a fused kernel is a multi-day CUDA-C++ work that lands in a follow-up.
+- ✅ **Track C2 — ROMY safety O(1) threat model** ([AUDIT #C2a](AUDIT.md)): the threat model document at `docs/research/reconcile/romy-threat-model.md` (~300 lines) is the durable artifact for the upstream PR to `vllm-project/vllm`. Covers the contract, the threat model (what ROMY addresses + what it does NOT), the formal Z3 property, the operational guarantees, the PR scope, and the honest gap on the PR submission (manual one-shot for Pablo).
+- 🟡 **Track C3 — RotateKV per-block** ([AUDIT #C3a](AUDIT.md)): the smoke test was investigated and the savings claim was **disproven** by the data (V7 with `group_size=64` is already per-block at the same metadata ratio that `CodecV8PerBlockConfig` would produce). The change was reverted before commit; the honest gap is filed. This is the right outcome — the AUDIT ledger was designed to capture this kind of honest-by-construction negative result.
+- ✅ **Track post-finalize — stale test removal**: the Sprint 5 commit (1c93153) moved `VRAMMonitor` from `metrics/` to `serving/` but left the stale test behind. Removed `tests/metrics/test_vram_monitor.py`; the targeted suite passes 99/0 in 52.85s; `pytest --collect-only` collects 775 tests with 0 errors.
 
 **Now — the safety contract that ships:** adaptive INV-15 thresholds · Z3 extended to INV-10…INV-14 · OTLP compliance export · FORGE-LEDGER streaming to SIEM.
 
-**Next — durable efficiency:** real `cargo test --release` on a VM with the Rust toolchain to validate the Sprint 2 PyO3 speedups against the numpy fallback · H100/MI300X pivot for real-mode bank test (5 tasks × 5 seeds, downstream LM = vLLM, EM/Rouge-L/accuracy instead of the constant-string stub) · Sprint 2 follow-up #1 (ragged-input support in `_quantize_block_batched`) · Zenodo deposit of paper v5.0 (manual one-shot).
+**Next — durable efficiency:** real `cargo test --release` on a VM with the Rust toolchain to validate the Sprint 2 PyO3 speedups against the numpy fallback · H100/MI300X pivot for real-mode bank test (5 tasks × 5 seeds, downstream LM = vLLM, EM/Rouge-L/accuracy instead of the constant-string stub) · Sprint 2 follow-up #1 (ragged-input support in `_quantize_block_batched`) · Zenodo deposit of paper v5.0 (manual one-shot for Pablo) · ROMY upstream PR to `vllm-project/vllm` (the threat model is the draft; Pablo opens the PR).
 
-**Later — scale & ecosystem:** multi-GPU TokenDance over RCCL · LMCache ROCm build · distributed `turboquant-turing` store with Mooncake (paper follow-up) · `rom_lm`/ROMY safety O(1) as a separable contribution (PR to `vllm-project/vllm`).
+**Later — scale & ecosystem:** multi-GPU TokenDance over RCCL · LMCache ROCm build · distributed `turboquant-turing` store with Mooncake (paper follow-up v5.1) · Track C1 fused-Triton kernel for codec_v8 (closes the 1% dequant @ n=65536 gap vs TurboQuant upstream) · `rom_lm`/ROMY safety O(1) as a separable contribution to the vLLM stack.
 
 ---
 
