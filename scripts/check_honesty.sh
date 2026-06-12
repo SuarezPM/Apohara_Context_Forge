@@ -106,7 +106,23 @@ if grep -nE "(tokens_per_sec|tps|t_per_s)\s*=\s*[0-9]+\.[0-9]+\b" \
     echo
 fi
 
-# 7. AUDIT #29 (Sprint 4) — forbid hardcoded compression_ratio=0.55
+# 7. AUDIT #320b (Track A1) — forbid hardcoded `speedup = <float>`
+#    literals in the Rust-vs-numpy bench. Every speedup value must
+#    be computed at runtime from time.perf_counter() deltas.
+#    The regex matches `speedup = N.NN` style assignment; named
+#    constants (e.g. `_STUB_SPEEDUP = 0.0` sentinels) are allowed
+#    by virtue of the leading underscore, which the regex
+#    does not require.
+echo "▸ hardcoded speedup literal in bench_rust_speedup.py (AUDIT #320b)"
+if grep -nE "speedup\s*=\s*[0-9]+\.[0-9]+\b" \
+       apohara_context_forge/benchmarks/apohara2/bench_rust_speedup.py 2>/dev/null; then
+    violations=$((violations + 1))
+    echo "  ❌ hardcoded speedup literal in Rust speedup bench."
+    echo "     Compute at runtime from time.perf_counter() deltas."
+    echo
+fi
+
+# 8. AUDIT #29 (Sprint 4) — forbid hardcoded compression_ratio=0.55
 #    in the h2h bench as a non-named assignment. The regex matches
 #    `compression_ratio = 0.55` (assignment) but NOT
 #    `_STUB_RATIO = 0.55` (named constant with leading underscore —

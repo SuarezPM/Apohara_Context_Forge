@@ -2737,3 +2737,88 @@ yellow as of its Sprint 5 revision) ·
 maintained by the same person who wrote the lies.*
 
 
+
+### AUDIT #320b — 🟢 Rust speedup measured: 490× FWHT, 2.24× dequant (2026-06-12)
+
+**What.** The in-tree `turboquant-turing` Rust crate was built
+end-to-end with `maturin develop --release --features compute_75`
+and benchmarked against the numpy fallback on the same workload
+(median of 30 runs, 5-iter warm-up, `time.perf_counter()`). The
+bench script is
+`apohara_context_forge/benchmarks/apohara2/bench_rust_speedup.py`
+and the CSV is `reports/rust_speedup_2026_06_12.csv`.
+
+**Measured numbers (Track A1).**
+
+| Op | n | Rust ms | Numpy ms | Speedup |
+|---|---|---|---|---|
+| fwht | 1024 | 0.011 | 2.085 | **195×** |
+| fwht | 8192 | 0.042 | 20.397 | **490×** |
+| fwht | 65536 | 0.349 | 198.637 | **569×** |
+| dequant | 1024 | 0.003 | 0.020 | **6.5×** |
+| dequant | 8192 | 0.018 | 0.040 | **2.2×** |
+| dequant | 65536 | 0.675 | 0.669 | **0.99×** (numpy wins) |
+
+**Medians: FWHT 490×, dequant 2.24×.** Both medians are >= 2×,
+the threshold in the Track A1 acceptance criteria for flipping
+AUDIT #320a to GREEN with measured numbers.
+
+**Honest gap (filed here, not papered over).** The dequant
+kernel at n=65536 packed bytes loses to numpy by 1% (Rust 0.675 ms
+vs numpy 0.669 ms). The numpy path is fully vectorized via
+`np.stack` + `reshape`; the Rust kernel is a tight per-block loop
+that does not SIMD-ize for large buffers. The Rust path remains
+**clearly superior** at small and medium sizes (1024-8192 bytes)
+where the per-call PyO3 overhead amortizes, but at >=64K the
+numpy path is the right choice. The dispatcher in
+`apohara_context_forge/quantization/fwht.py:_select_fwht_impl` is
+the right place to encode this threshold (e.g. prefer numpy when
+`n_bytes >= 65536`); a future PR can wire that heuristic with a
+single-line change.
+
+**Parity (Rust vs numpy, same input).** `tests/test_rust_crate.py`
+pins 11 parity cases (FWHT self-inverse = `d*x`, dequant
+bit-for-bit) — all PASS. The crate output is **identical** to the
+inlined numpy butterfly, so the dispatcher in
+`fwht.py:_select_fwht_impl` can safely prefer Rust when the wheel
+is importable.
+
+**AUDIT state transitions.**
+
+- AUDIT #320a stays GREEN (the Rust path was already shipped; the
+  measured numbers here confirm the green with concrete data).
+- AUDIT #320b filed as a sub-entry: GREEN for the measured
+  numbers, with the dequant @ n=65536 honest gap inline.
+
+**Tests added.**
+
+- `tests/test_rust_crate.py` — 11 tests across 4 parametrize cases
+  + 3 negative cases (rejection of `group_size=0`, indivisible
+  length, etc.). All pass on a built wheel. `pytest.importorskip`
+  on the module so the file skips cleanly when maturin was not run.
+
+**Honesty gate update.** `scripts/check_honesty.sh` now forbids
+hardcoded `speedup = N.NN` literals in `bench_rust_speedup.py`
+(AUDIT #320b rule #7). The `rust_ms`, `numpy_ms`, and computed
+`speedup` columns in the CSV all come from `time.perf_counter()`.
+
+**Verification.**
+
+- `bash scripts/check_honesty.sh` → **PASS** (7 prior rules + 1
+  new rule for AUDIT #320b).
+- `PYTHONPATH=. .venv/bin/python -m pytest -q --no-header
+  tests/test_rust_crate.py` → **11 passed in 0.09s**.
+- `cd apohara_context_forge/serving/turboquant_turing &&
+  .venv/bin/maturin develop --release --features compute_75`
+  → wheel installed; `import turboquant_turing` exposes
+  `fwht_inplace`, `dequant_per_block`, `encode_kv_py`,
+  `decode_kv_py` (the latter two are the legacy Lloyd-Max
+  surface retained for back-compat).
+- The CSV `reports/rust_speedup_2026_06_12.csv` has the 6-row
+  bench matrix with the numbers above; the `source` column cites
+  the git head + the wheel status (`rust+numpy`).
+
+**Status: 🟢 GREEN with measured numbers** — the Rust path is
+real, the speedups are reproducible, and the one honest gap
+(dequant @ n=65536) is filed with the file:line evidence above.
+
