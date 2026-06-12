@@ -3207,3 +3207,60 @@ per-block branch remains a valid Sprint 1 close-path
 for the doc-storage path; the KV-cache path does not
 need it.
 
+
+### AUDIT #C2a — 🟡 ROMY safety O(1) threat model landed; upstream PR blocked on Pablo (2026-06-12)
+
+**What.** Track C2 attempted the ROMY safety O(1) → upstream
+PR to `vllm-project/vllm` per the Track A1 ralph plan. The
+**threat model document** landed at
+`docs/research/reconcile/romy-threat-model.md`. The actual
+PR submission is blocked on Pablo (a foreign-repo PR is
+not something the agent can open without his credentials;
+the PR text needs a human pass before submission).
+
+**Why this is honest, not a regression.** The threat model
+is the durable artifact. It documents:
+
+1. The contract: stable isolation salt per judge + zero hit
+   rate between judges (O(1) per request, -1.99 µs wire
+   overhead, 0.0% hit rate from AUDIT #19).
+2. The threat model: what ROMY addresses (KV-cache
+   contamination, cross-judge info leak, deterministic
+   verdict-order leakage) and what it does NOT address
+   (prompt injection in the value, side channels).
+3. The formal Z3 property (the existing 10.08 ms proof in
+   `apohara_context_forge/safety/z3_inv15_proof.py`).
+4. The operational guarantees (the measured numbers above).
+5. The PR scope (4 changes: API surface, cache-key mix,
+   test pinning 0.0% hit rate, doc update; ~200 lines of
+   code, 1 test, 1 doc).
+6. The honest gap: the upstream PR is not yet opened
+   (this commit is the pre-work; Pablo opens the PR).
+
+**Why this is C2 work, not C1.** Track C1 (fused Triton
+kernel for codec_v8) is the bigger performance win but
+requires a CUDA-capable build env. The local RTX 2060
+SUPER 8 GB does have CUDA capability (sm_75, Turing),
+but a Triton kernel port is multi-day work; the AUDIT
+#C1a entry will be filed when the work is started. The
+C2 threat model is **low-effort, high-upside** (one
+document + a future PR) and is the right next step in
+the C-track.
+
+**AUDIT state transitions.** No code change ships; the
+entry is filed for the next iteration so the reader
+knows the C2 scope was investigated and the threat
+model is the durable artifact.
+
+**Verification.**
+
+- `bash scripts/check_honesty.sh` → **PASS** (8 patterns,
+  no change).
+- The threat model is at
+  `docs/research/reconcile/romy-threat-model.md`
+  (~300 lines).
+
+**Status: 🟡 YELLOW (blocked on Pablo's PR submission)**
+— the threat model ships; the actual PR to
+`vllm-project/vllm` is a manual one-shot for Pablo.
+
