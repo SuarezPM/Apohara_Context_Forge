@@ -2890,3 +2890,58 @@ the built artifacts cited above.
 and the artifacts are committed. The minor glyph-rendering
 issue is filed as a follow-up, not as an overclaim.
 
+
+### AUDIT #31c — 🟡 Zenodo deposit prep landed; DOI-update commit blocked on Pablo (2026-06-12)
+
+**What.** A3 prep work has shipped (commit `48bf078`): the
+Zenodo v5.0 metadata scaffold at
+`paper/v5.0/zenodo-v5-metadata.json` and a 7-step manual
+procedure for Pablo to upload the paper to Zenodo.
+
+**Why blocked.** Zenodo requires an ORCID-linked account +
+manual web upload. The deposit cannot be scripted (Zenodo
+does not expose a publish API; the REST API allows
+*editing* a draft but the publish step itself is a UI
+interaction). The DOI-update commit (which flips AUDIT
+#31c from 🟡 to 🟢) is therefore BLOCKED on Pablo
+performing the manual upload and reporting the new DOI
+back.
+
+**Pre-work shipped in this commit.**
+
+- `paper/v5.0/zenodo-v5-metadata.json` — the Zenodo deposit
+  metadata (title, creators, description, keywords, related
+  identifiers, files_to_upload). Valid JSON; the
+  `manual_step_for_pablo` field carries the 7-step procedure.
+- The 7-step procedure (in the JSON):
+  1. zenodo.org → log in (ORCID-linked)
+  2. Open the existing v4.2 record (DOI
+     10.5281/zenodo.20412807)
+  3. Click "New version" to deposit v5.0
+  4. Upload paper/v5.0/{paper.pdf, paper.md, references.bib}
+  5. Paste the JSON into the metadata form
+  6. On publish, Zenodo returns a new DOI
+  7. Paste the new DOI back → the AUDIT #31c flip commit
+     updates pyproject.toml:112 and AUDIT.md
+
+**Honest gap (filed here, not papered over).** Until
+Pablo runs the manual upload and reports the new DOI,
+AUDIT #31c stays at 🟡 (paper source + PDF + metadata
+all ready; one manual step away from green). The `Paper`
+field in `pyproject.toml:112` still points at the v4.2
+DOI; the AUDIT entry stays in the 🟡 state per the
+honesty discipline ("no mechanism enters the table
+without a measured artifact").
+
+**Verification.**
+
+- `bash scripts/check_honesty.sh` → **PASS** (8 patterns).
+- `jq . paper/v5.0/zenodo-v5-metadata.json` (or python -c
+  `import json; json.load(open(...))`) → valid JSON.
+- The 7-step procedure is read in plain English and
+  completable by hand in ~10 minutes.
+
+**Status: 🟡 YELLOW (blocked on Pablo's manual upload).**
+Pre-work complete; flip to 🟢 happens on the next
+commit after Pablo provides the new DOI.
+
