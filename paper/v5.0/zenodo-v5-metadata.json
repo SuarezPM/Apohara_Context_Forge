@@ -1,0 +1,50 @@
+{
+  "title": "Apohara 2.0: A hardware-agnostic compression stack for KV-cache reuse (v5.0 companion systems paper)",
+  "version": "5.0",
+  "publication_date": "2026-06-12",
+  "creators": [
+    {
+      "name": "Suarez, Pablo M.",
+      "affiliation": "Universidad Nacional de Tucumán",
+      "orcid": ""
+    }
+  ],
+  "description": "v5.0 is the companion systems paper for the Apohara 2.0 release. The narrative arc starts at GATE #0 ABANDON (the original KV-sharing mechanism lost to native vLLM APC by 22% throughput and added 147% TTFT) and ends at a 3.94 GiB RAM ceiling for 10M documents at 768-d/4-bit (AUDIT #23b closed by the per-block codec, AUDIT #27). The headline is the 'WOW 8 GB' matrix on an RTX 2060 SUPER: three A/B/C conditions measured end-to-end, with the 'cabe, no es usable' cell preserved as a measured negative result, not papered over. All measurements trace to committed logs; all claims in the paper match the runtime evidence. v4.2 (DOI 10.5281/zenodo.20412807) is the predecessor; this is a new version, not a new record. The full v6.0 paper is the Zenodo record 10.5281/zenodo.20114594 (v3.0).",
+  "license": "CC-BY-4.0",
+  "keywords": [
+    "Apohara 2.0",
+    "KV cache compression",
+    "LLMLingua-2",
+    "TurboQuant",
+    "Turbovec",
+    "Walsh-Hadamard",
+    "per-block codec",
+    "multi-agent LLM",
+    "vLLM",
+    "hardware-agnostic"
+  ],
+  "related_identifiers": [
+    {
+      "relation": "isNewVersionOf",
+      "identifier": "10.5281/zenodo.20412807"
+    },
+    {
+      "relation": "isSupplementTo",
+      "identifier": "https://github.com/SuarezPM/Apohara_Context_Forge"
+    }
+  ],
+  "files_to_upload": [
+    "paper/v5.0/paper.pdf",
+    "paper/v5.0/paper.md",
+    "paper/v5.0/references.bib"
+  ],
+  "manual_step_for_pablo": [
+    "1. Open https://zenodo.org/ and log in (ORCID-linked account).",
+    "2. Navigate to the existing v4.2 record (DOI 10.5281/zenodo.20412807).",
+    "3. Click 'New version' to deposit a v5.0.",
+    "4. Upload the three files listed in 'files_to_upload' above.",
+    "5. Paste the contents of this JSON into the metadata form (or use the Zenodo REST API to push the same JSON, see https://developers.zenodo.org/).",
+    "6. On publish, Zenodo returns a new DOI (typically 10.5281/zenodo.NNNNNNNN).",
+    "7. Paste the new DOI back to the assistant; the commit that flips AUDIT #31c to green will then update pyproject.toml:112 and AUDIT.md with the new DOI."
+  ]
+}
