@@ -110,6 +110,12 @@ Repository    = "https://github.com/SuarezPM/Apohara_Context_Forge"
 Documentation = "https://github.com/SuarezPM/Apohara_Context_Forge#readme"
 Changelog     = "https://github.com/SuarezPM/Apohara_Context_Forge/blob/main/CHANGELOG.md"
 Audit         = "https://github.com/SuarezPM/Apohara_Context_Forge/blob/main/AUDIT.md"
+# v5.0 deposit pending — update DOI once Zenodo returns the new record.
+# AUDIT #31c tracks the deposit as a one-shot manual step; the live
+# citation today is the v4.2 deposit (the URL on the next line).
+# `tests/test_paper_v5_rename.py` asserts this URL is still the v4.2
+# DOI so a future contributor cannot silently point the field at a
+# non-existent record.
 Paper         = "https://doi.org/10.5281/zenodo.20412807"
 Issues        = "https://github.com/SuarezPM/Apohara_Context_Forge/issues"
 

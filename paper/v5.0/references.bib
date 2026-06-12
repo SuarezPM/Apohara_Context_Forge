@@ -1,0 +1,112 @@
+% Apohara 2.0 — v5.0 companion paper references.
+%
+% Minimal 5-10 entries. The full reference graph (23 entries) lives
+% in the v4.2 paper source at `paper/references.bib`. This file is
+% the curated subset cited from `paper.md`. (AUDIT #31b.)
+
+@misc{apohara_v42_zenodo,
+  author       = {Suarez, Pablo M.},
+  title        = {{INV-15: A Formal Safety Invariant for KV-Cache Reuse
+                   in Multi-Agent Judge Pipelines} (APOHARA · ContextForge, v4.2)},
+  year         = {2026},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.20412807},
+  url          = {https://doi.org/10.5281/zenodo.20412807},
+  note         = {Live DOI as of 2026-06-08; the v5.0 companion
+                  (this paper) will be deposited under a new Zenodo
+                  record URL — see \texttt{pyproject.toml:113} for the
+                  deposit-pending annotation.},
+}
+
+@misc{apohara_v30_zenodo,
+  author       = {Suarez, Pablo M.},
+  title        = {{INV-15: A Formal Safety Invariant for KV-Cache Reuse
+                   in Multi-Agent Judge Pipelines} (APOHARA · ContextForge, v3.0)},
+  year         = {2026},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.20114594},
+  url          = {https://doi.org/10.5281/zenodo.20114594},
+  note         = {Initial Zenodo deposit; the v3.0 LaTeX source is
+                  preserved at \texttt{paper/inv15\_paper.tex} for
+                  the academic record.},
+}
+
+@inproceedings{llmlingua2,
+  author       = {Pan, Zhuowan and Wu, Yao and Chen, Bofeng and Chen, Hao
+                  and Chen, Wei and Li, Yimeng and Yuan, Lijuan},
+  title        = {{LLMLingua-2}: Data Distillation for Efficient and
+                   Faithful LLM serving},
+  booktitle    = {Proceedings of the 2024 Conference of the North American
+                  Chapter of the Association for Computational Linguistics},
+  year         = {2024},
+  publisher    = {Association for Computational Linguistics},
+  url          = {https://aclanthology.org/2024.naacl-long.326/},
+}
+
+@misc{apohara_reconcile_romy,
+  author       = {Suarez, Pablo M.},
+  title        = {{ROMY reconciled with the Apohara 2.0 compression
+                   layers (post-ABANDON reframe)}},
+  year         = {2026},
+  howpublished = {Apohara Context Forge tracked doc
+                  \texttt{docs/research/reconcile/romy-2026-06-11.md}},
+  note         = {Captured the GATE \#0 ABANDON reframe from a
+                  single integrated KV-sharing mechanism to the
+                  three-layer compression stack.},
+}
+
+@misc{apohara_atomy_to_romy,
+  author       = {Suarez, Pablo M.},
+  title        = {{ATOM $\rightarrow$ ROMY} reconciliation table},
+  year         = {2026},
+  howpublished = {Apohara Context Forge tracked doc
+                  \texttt{docs/research/reconcile/atomy-to-romy.md}},
+  note         = {Source of truth for the ATOM $\rightarrow$ ROMY
+                  rename: brand, Python identifiers, file paths,
+                  entry-point, dashboard scenario id, and prose
+                  references.},
+}
+
+@misc{rocm_atom_collision,
+  author       = {{AMD ROCm team}},
+  title        = {{ROCm/ATOM} (\textit{AiTer Optimized Model}) — a
+                   vLLM acceleration path for MI300X},
+  year         = {2026},
+  howpublished = {GitHub repository},
+  url          = {https://github.com/ROCm/ATOM},
+  note         = {External product, unrelated to the Apohara
+                  ``ATOM'' brand. The collision motivated the
+                  rename to ROMY in AUDIT \#20.},
+}
+
+@misc{vllm_apc,
+  author       = {{vLLM project}},
+  title        = {{Automatic Prefix Caching} (APC)},
+  year         = {2026},
+  howpublished = {vLLM documentation},
+  url          = {https://docs.vllm.ai/en/latest/features/automatic_prefix_caching.html},
+  note         = {vLLM's block-hash APC is the durable serving-layer
+                  lever; the Apohara salt planner drives judge
+                  isolation on top of it.},
+}
+
+@misc{wh_transform,
+  author       = {Beauchamp, Kenneth G.},
+  title        = {Walsh Functions and Their Applications},
+  year         = {1975},
+  publisher    = {Academic Press},
+  note         = {Standard reference for the Walsh--Hadamard
+                  transform used in the codec pre-rotation.},
+}
+
+@misc{apohara_audit_27a,
+  author       = {Suarez, Pablo M.},
+  title        = {{AUDIT \#27a} --- closed-form per-block codec,
+                   \texttt{group\_size=256}, $\sim$3{,}940~MiB},
+  year         = {2026},
+  howpublished = {Apohara Context Forge \texttt{AUDIT.md} entry,
+                  captured 2026-06-11},
+  note         = {Closes the 4~GiB RAM ceiling for 10M documents
+                  at 768-d/4-bit, replacing the prior 62{,}294~MiB
+                  pre-fix projection.},
+}

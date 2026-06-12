@@ -148,7 +148,7 @@ SCENARIOS: list[ScenarioBenchmark] = [
         vram_baseline_gb=165.0, vram_contextforge_gb=120.0,
         ttft_baseline_ms=365.0, ttft_contextforge_ms=272.0,
         throughput_baseline_tps=290.0, throughput_contextforge_tps=400.0),
-    ScenarioBenchmark(id=7, name="atom_plugin_hooks",
+    ScenarioBenchmark(id=7, name="romy_plugin_hooks",
         vram_baseline_gb=165.0, vram_contextforge_gb=108.0,
         ttft_baseline_ms=375.0, ttft_contextforge_ms=280.0,
         throughput_baseline_tps=280.0, throughput_contextforge_tps=408.0),

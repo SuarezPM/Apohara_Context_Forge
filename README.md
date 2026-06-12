@@ -256,7 +256,7 @@ Most AI repos inflate. We do the opposite — on purpose, because trust is the p
 
 **Next — durable efficiency:** TurboQuant-KV CUDA kernel port to CC 7.5 (RTX 2060 SUPER 8GB) · granite-embedding-311m-multilingual-r2 768-d migration in turbovec-rag · H100/MI300X pivot for real-mode bank test (5 tasks × 5 seeds, downstream LM = vLLM, EM/Rouge-L/accuracy instead of constant-string stub).
 
-**Later — scale & ecosystem:** multi-GPU TokenDance over RCCL · LMCache ROCm build · companion systems paper (v5.0 — *includes the GATE #0 reframe, post-ABANDON, with measured numbers, not extrapolations*; rename ATOM→ROMY; reconcile v3.0→v4.2 in the .tex/.bib).
+**Later — scale & ecosystem:** multi-GPU TokenDance over RCCL · LMCache ROCm build · companion systems paper (v5.0 — *includes the GATE #0 reframe, post-ABANDON, with measured numbers, not extrapolations*; ROMY rename completed in code; reconcile v3.0→v4.2 in the .tex/.bib).
 
 ---
 

@@ -51,7 +51,7 @@ class Pipeline:
         # Create demo agents
         self.agents = create_agents()
 
-        # Prefix-caching wiring (ATOM Fase 1): a single normalizer assembles a
+        # Prefix-caching wiring (ROMY Fase 1): a single normalizer assembles a
         # byte-identical system prefix across all agents, and the salt planner
         # decides each agent's vLLM cache_salt. The anchor for the shared prefix
         # is the normalizer's canonical system-prompt hash (identical for every
