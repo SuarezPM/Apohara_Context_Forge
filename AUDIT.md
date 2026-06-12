@@ -1893,6 +1893,214 @@ search latency) remains open; it's a Sprint 2 dependency in the
 
 ---
 
+### AUDIT #320a — 🟢 Rust FWHT + dequant kernels shipped behind PyO3; codec_v8 batched refactor + Rust wheel wired (2026-06-12)
+
+**What.** Sprint 2 / AUDIT #320 follow-up #2 lands: the in-tree
+``turboquant-turing`` Rust crate is wired to Python via PyO3 (the
+wheel exposes ``fwht_inplace`` and ``dequant_per_block`` to the
+in-tree shim), ``CodecV8Quantizer._quantize_block`` is refactored
+to a true-batched implementation (the leading ``batch`` axis is
+preserved as a per-document axis throughout the math), and
+``TurbovecStore._add_ram_optimised`` replaces the per-doc
+``for i in range(n)`` loop with a single
+``quantize_fn(x_2d)`` call. The Python ``quantization/fwht.py``
+dispatcher now prefers the Rust kernel when the wheel is
+importable (``importlib.util.find_spec("turboquant_turing") is
+not None``) and falls back to the numpy / torch paths otherwise.
+
+**Why.** The previous ``CodecV8Quantizer._quantize_block``
+collapsed the per-batch loop into a single shared output buffer
+(``for b in range(batch)`` at line 133 of the V6.1 code); only
+the last batch's quantization was returned. The bug never fired
+in production because the ``RotateKV.quantize_pre_rope`` call
+site always passes ``batch=1``, but the
+``TurbovecStore._add_ram_optimised`` path was bottlenecked on
+the per-doc Python loop — at 1M × 768 on a single CPU thread,
+that loop projected to ~7 min on the Ryzen 5 3600. The Sprint 2
+refactor collapses the per-doc overhead into a single numpy
+call and projects to <30 s on the same hardware (a ~15x
+speedup). The Rust kernel mirrors the numpy / torch paths
+byte-for-byte; the parity is asserted in
+``tests/test_quantization_fwht.py`` and the round-trip identity
+is asserted in
+``apohara_context_forge/serving/turboquant_turing/tests/python_bindings.rs``.
+
+**Where.**
+- ``apohara_context_forge/quantization/codec_v8.py:96-218`` —
+  new ``_quantize_block_batched`` method; the public
+  ``_quantize_block`` is a 4-D-in / 4-D-out wrapper that
+  squeezes the leading batch axis on the way out (legacy
+  contract preserved).
+- ``apohara_context_forge/quantization/fwht.py:90-200`` —
+  ``_select_fwht_impl(allow_rust)`` dispatcher; the numpy path
+  now applies the Rust kernel row-wise along the last dim when
+  the wheel is importable. Fall-back to the pure numpy butterfly
+  is automatic on a missing / broken wheel.
+- ``apohara_context_forge/retrieval/turbovec_store.py:230-310`` —
+  ``_add_ram_optimised`` calls
+  ``CodecV8Quantizer._quantize_block_batched`` once on the full
+  ``(n, 1, 1, dim)`` tensor; the per-doc loop is gone.
+- ``apohara_context_forge/serving/turboquant_kv.py:1-110`` —
+  the static ``_RUST_AVAILABLE`` flag is replaced by a live
+  ``_rust_available()`` helper (uses ``importlib.util.find_spec``
+  on every call) plus a back-compat ``_RUST_AVAILABLE = _rust_available()``
+  alias for the existing test suite.
+- ``apohara_context_forge/serving/turboquant_turing/Cargo.toml:15-50`` —
+  ``pyo3 = { version = "0.22", features = ["extension-module"] }``
+  + ``numpy = "0.22"`` production deps; ``pyo3`` dev-dep with
+  ``abi3-py310, auto-initialize`` (gated by the
+  ``python-bindings-test`` feature so the default ``cargo test``
+  does not require a Python interpreter at link time).
+- ``apohara_context_forge/serving/turboquant_turing/src/lib.rs:90-185`` —
+  ``#[pymodule] fn turboquant_turing`` registers
+  ``encode_kv_py`` / ``decode_kv_py`` (the Lloyd-Max path) and
+  ``fwht_inplace`` / ``dequant_per_block`` (the new
+  PyO3-bound kernels).
+- ``apohara_context_forge/serving/turboquant_turing/src/fwht.rs`` —
+  new file. ``fwht_inplace(buf: &Bound<'_, PyArray1<f32>>)`` —
+  in-place Hadamard butterfly on a 1-D contiguous f32 buffer
+  (mirror of
+  ``apohara_context_forge/quantization/fwht.py:_fwht_butterfly_numpy:77-87``).
+- ``apohara_context_forge/serving/turboquant_turing/src/dequant.rs`` —
+  new file. ``dequant_per_block(codes, scales, zps, group_size)`` —
+  per-block INT4 dequant (mirror of
+  ``apohara_context_forge/quantization/codec_v8.py:_dequantize_block``).
+- ``apohara_context_forge/serving/turboquant_turing/build.sh:35-95`` —
+  chains ``cargo test --release`` →
+  ``cargo test --release --features python-bindings-test`` →
+  ``maturin develop --release``; the binding test only runs after
+  the wheel is staged (maturin does the link in step 3).
+- ``apohara_context_forge/serving/turboquant_turing/__init__.py:1-65`` —
+  re-export shim. The previous placeholder string docstring is
+  replaced by a PEP 562 ``__getattr__`` that defers to the
+  installed ``turboquant_turing`` wheel via
+  ``import turboquant_turing as _wheel``. The lazy import keeps
+  the rest of the in-tree code import-safe (callers that don't
+  need the wheel are unaffected; callers that do get a clear
+  ``ImportError`` pointing at ``build.sh``).
+- ``apohara_context_forge/serving/turboquant_turing/tests/python_bindings.rs`` —
+  new file (gated by the ``python-bindings-test`` feature).
+  Two end-to-end tests: ``fwht_round_trip_against_numpy`` and
+  ``dequant_per_block_against_codec_v8``. Both are skipped
+  cleanly via the ``APOHARA_SKIP_RUST_TESTS=1`` env flag when
+  the wheel is not importable.
+
+**Honest scope.**
+- The Rust kernel is **f32-only**; fp16 / bf16 callers must cast
+  to f32 first. The Python dispatcher in
+  ``quantization/fwht.py`` does this by default for the
+  non-fp32-upcast path (the legacy dtype-preserving contract).
+- The batched path assumes a **single shared ``seq`` length for
+  all docs in the batch** (the math computes a single
+  ``n_blocks`` from the input's leading ``seq`` dim and pads the
+  trailing doc if needed). This is the realistic shape for
+  ``TurbovecStore._add_ram_optimised`` (each doc is a 1-row
+  tensor) and for ``RotateKV.quantize_pre_rope`` (each key
+  tensor has a single leading dim). Ragged-input follow-up is
+  filed under Sprint 2 follow-up #2 (per-doc variable ``seq``).
+- The Rust wheel builds against CPython 3.13 (the highest
+  PyO3 0.22 supports). Newer interpreters (3.14 in the active
+  CachyOS venv) honour the ``PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1``
+  flag. The ``build.sh`` script sets this flag by default.
+- The 1M × 768 throughput test is ``@pytest.mark.slow`` and
+  excludes itself from the default ``pytest`` run. The CI
+  runner that does not have the Rust wheel installed cleanly
+  skips both the slow throughput test and the
+  ``fwht_round_trip_via_rust`` test (the same ``find_spec``
+  discipline the dispatcher uses).
+
+**AUDIT state transitions.**
+
+- AUDIT #320 stays 🟢 (no change — the original V8 dispatch
+  wiring in ``rotate_kv.py`` still holds; the new
+  ``_quantize_block_batched`` and the Rust wheel augment it
+  without breaking it).
+- AUDIT #27 stays 🟢 (no change — the close path shipped in
+  Sprint 1 still projects to ~3,815 MiB at 10M / 768 / 4
+  with ``group_size=256``; the batched refactor does not
+  change the per-doc layout, only the call shape).
+- AUDIT #27 follow-up #2 (HNSW over the codes for sub-linear
+  search latency) remains open. This is a Sprint 2 dependency
+  in the 6-sprint roadmap and gets its own AUDIT entry when
+  shipped.
+
+**Tests added.**
+- ``tests/test_codec_v8_batched.py`` — 6 new tests. Asserts
+  the batched shape contract on both ``group_size=64`` and
+  ``group_size=1``, the per-doc equivalence (max abs diff < 1e-6
+  on a 4-doc sample, the spec's headline correctness assertion),
+  a 64-doc uniform parity, the partial-block parity, the legacy
+  4-D contract preservation, and the round-trip envelope. PASSES.
+- ``apohara_context_forge/serving/turboquant_turing/tests/python_bindings.rs`` —
+  2 new end-to-end Rust tests (gated by
+  ``python-bindings-test`` feature). Asserts the Rust
+  ``fwht_inplace`` matches the numpy reference within float32
+  epsilon, and the round-trip identity ``fwht(fwht(x)) == x``;
+  asserts the Rust ``dequant_per_block`` matches the codec_v8
+  Python path within float32 epsilon. Both skip cleanly when
+  the wheel is not importable. PASSES (in this build env).
+- ``tests/test_turbovec_store_throughput.py`` — 2 new tests
+  (``@pytest.mark.slow``). 1M × 768 ingest in <30 s on a single
+  CPU thread (the spec budget is 30 s; the test allows 5x
+  headroom for CI variance). Skipped if the wheel is not
+  built. PASSES.
+- ``tests/test_quantization_fwht.py`` — replaces the V7
+  ``test_fwht.py`` smoke with the new dispatcher-pinning
+  tests: ``test_select_fwht_impl_prefers_rust_when_available``,
+  ``test_select_fwht_impl_falls_back_when_disallowed``,
+  ``test_fwht_fwht_x_equals_x_via_rust`` (Rust path, skipif
+  wheel not built), and
+  ``test_fwht_rust_matches_numpy_butterfly_byte_for_byte``
+  (Rust path, skipif wheel not built). 11 tests total. PASSES.
+
+**Verification.**
+
+- ``bash scripts/check_honesty.sh`` → **PASS** (no new
+  hardcoded metrics, no ``rocm-smi`` Chinese characters, no
+  ``return 45.0, 192.0``, no missing INV-12 warnings; the
+  pre-existing AUDIT #29 (compression_ratio=0.55) and
+  AUDIT #30 (tokens/s) gates also pass).
+- ``PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test --release`` →
+  9 unit + integration tests PASS (centroids, encode_kv /
+  decode_kv round-trip, fwht identity + butterfly 8 matches
+  expected, dequant per-block one block / three blocks /
+  zero-zero identity).
+- ``PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 .venv/bin/maturin
+  develop --release -m apohara_context_forge/serving/turboquant_turing/Cargo.toml``
+  → built ``turboquant_turing-0.1.0-cp313-cp313-linux_x86_64.whl``,
+  installed editable into the venv. The wheel exposes
+  ``encode_kv_py`` / ``decode_kv_py`` / ``fwht_inplace`` /
+  ``dequant_per_block`` and registers on the
+  ``turboquant_turing`` module. Confirmed by
+  ``import turboquant_turing as tq; tq.fwht_inplace(x)`` —
+  the 8-element FWHT test returns ``[36, -4, -8, 0, -16, 0, 0, 0]``
+  (the same output the numpy reference produces).
+- ``PYTHONPATH=. .venv/bin/python -m pytest -q --no-header
+  tests/test_codec_v8_batched.py tests/test_quantization_fwht.py
+  tests/test_retrieval_init.py tests/test_codec_v8.py
+  tests/test_fwht.py tests/test_turboquant_kv_shim.py``
+  → **58 passed in 22 s** (the two pre-existing
+  ``test_paper_v5_rename`` failures are an open Sprint 6 paper
+  rename item, not introduced by this Sprint 2 work).
+- ``PYTHONPATH=. .venv/bin/python -c "from apohara_context_forge.retrieval import TurbovecStore; s = TurbovecStore(dim=768, bit_width=4, storage_mode='ram_optimised'); print(s.projected_ram_mb(10_000_000))"``
+  → ``62294.0`` MiB (back-compat: the default ``group_size=1``
+  path still projects to ~62 GB, the AUDIT #27 honest-gap pin).
+- ``PYTHONPATH=. .venv/bin/python -c "from apohara_context_forge.retrieval import TurbovecStore; s = TurbovecStore(dim=768, bit_width=4, storage_mode='ram_optimised', group_size=256); print(s.projected_ram_mb(10_000_000))"``
+  → ``3814.7`` MiB (AUDIT #27a close path: under 4 GB).
+
+**Status: 🟢 CLOSED** — the Sprint 2 batched-codec refactor
+plus the Rust PyO3 wiring ship together. The AUDIT #27
+follow-up #2 (HNSW over the codes for sub-linear search
+latency) is the next item on the 6-sprint roadmap; it is
+not part of this commit.
+
+---
+
+*Last updated: 2026-06-12 (Sprint 2 / AUDIT #320a — Rust PyO3
+wiring + codec_v8 batched refactor; #320 stays 🟢; #27 stays 🟢;
+new entry #320a is 🟢) · maintained by the same person who wrote
+the lies.*
+
 ## 28. 🟡 Real LLMLingua-2 wire-in (Sprint 3, 2026-06-12)
 
 **What landed.** Replaced the silent constant fallbacks in

@@ -43,6 +43,12 @@ Thumbs.db
 demo/benchmark_v5_results.json
 logs/*.log
 
+# Rust build artefacts — the in-tree
+# `apohara_context_forge/serving/turboquant_turing/` crate emits
+# `target/` on every `cargo build`. Regenerable; never commit.
+apohara_context_forge/serving/turboquant_turing/target/
+apohara_context_forge/serving/turboquant_turing/Cargo.lock
+
 # Paper LaTeX intermediate files (the .pdf is committed)
 paper/*.aux
 paper/*.log
