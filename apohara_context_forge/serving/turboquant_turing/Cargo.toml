@@ -17,3 +17,18 @@ default = ["compute_75"]
 compute_75 = []
 compute_80 = []
 compute_90 = []
+
+[dependencies]
+# Sprint 2 / AUDIT #320a: PyO3 binding for the in-tree Python wheel
+# (maturin develop). The `extension-module` feature is what marks the
+# resulting .so as a CPython extension — without it the wheel would
+# fail to import.
+pyo3 = { version = "0.22", features = ["extension-module"] }
+# NumPy <-> Rust buffer zero-copy binding used by `fwht_inplace` and
+# `dequant_per_block`. Pinned at 0.22 to match the pyo3 0.22 ABI.
+numpy = "0.22"
+
+[dev-dependencies]
+# Used by `tests/python_bindings.rs` to spin up a Python interpreter
+# in-process and exercise the wheel end-to-end.
+pyo3 = { version = "0.22", features = ["auto-initialize"] }

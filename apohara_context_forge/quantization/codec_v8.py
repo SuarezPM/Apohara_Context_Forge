@@ -104,8 +104,54 @@ class CodecV8Quantizer(RotateKVQuantizer):
 
         1. min/max computed per-pair (no ``axis=4`` collapse)
         2. scales / zero_points carry a trailing ``pair`` axis of size 2
+
+        Sprint 2 / AUDIT #320a note: the previous implementation
+        collapsed the per-batch loop into a single shared output
+        buffer (the ``for b in range(batch)`` at line 133 of the
+        V6.1 code); only the last batch's quantization was returned.
+        The new implementation is fully batched — the leading axis
+        is preserved as a true document axis throughout the math —
+        and the public 4-D-in / 4-D-out contract is preserved by
+        squeezing the leading axis on the way out for callers that
+        pass ``(1, seq, 1, head_dim)`` (the conventional way to feed
+        a single doc). Callers that want the full batch back should
+        use :meth:`_quantize_block_batched` directly.
+        """
+        # Dispatch to the batched implementation. The batched method
+        # always receives 4-D input ``(batch, seq, H, D)``; the
+        # first axis is treated as the document axis. For the
+        # 4-D-in / 4-D-out contract we slice the leading axis back
+        # out on the way out (so a 4-D ``(1, seq, 1, head_dim)``
+        # input returns a 4-D ``(1, n_blocks, 1, packed_head_dim)``
+        # output — the legacy shape).
+        was_4d = states.ndim == 4
+        packed, scales, zero_points = self._quantize_block_batched(states)
+        if was_4d:
+            return packed[0], scales[0], zero_points[0]
+        return packed, scales, zero_points
+
+    def _quantize_block_batched(
+        self, states: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """True-batched V8 quantizer — preserves the leading batch dim.
+
+        Input contract: ``states`` is always 4-D
+        ``(batch, seq, num_heads, head_dim)``. The first axis is the
+        document axis. The legacy 4-D single-doc call site
+        (``RotateKV.quantize_pre_rope``) is preserved by the public
+        :meth:`_quantize_block` wrapper, which squeezes the leading
+        axis on the way out for callers that pass a 4-D input.
+
+        Returns ``(keys_int4, scales, zero_points)`` with shapes
+        ``(batch, n_blocks, group_size, num_heads, packed_head_dim)``,
+        ``(batch, n_blocks, num_heads, packed_head_dim, 2)`` and
+        ``(batch, n_blocks, num_heads, packed_head_dim, 2)``,
+        respectively. Equivalent to stacking ``_quantize_block(s)`` for
+        each doc ``s`` in the leading axis — verified by the parity
+        test in ``tests/test_codec_v8_batched.py``.
         """
         cfg = self._config
+        # 4-D contract: (batch, seq, num_heads, head_dim).
         batch, seq, num_heads, head_dim = states.shape
 
         n_blocks = seq // cfg.group_size
@@ -116,71 +162,84 @@ class CodecV8Quantizer(RotateKVQuantizer):
         max_range = 15.0 if cfg.bits == 4 else 255.0
 
         keys_int4 = np.zeros(
-            (n_blocks, cfg.group_size, num_heads, packed_head_dim), dtype=np.uint8
+            (batch, n_blocks, cfg.group_size, num_heads, packed_head_dim),
+            dtype=np.uint8,
         )
-        # V8: trailing pair axis on scales / zero_points.
         scales = np.zeros(
-            (n_blocks, num_heads, packed_head_dim, 2), dtype=np.float32
+            (batch, n_blocks, num_heads, packed_head_dim, 2), dtype=np.float32
         )
         zero_points = np.zeros(
-            (n_blocks, num_heads, packed_head_dim, 2), dtype=np.float32
+            (batch, n_blocks, num_heads, packed_head_dim, 2), dtype=np.float32
         )
 
         padded_seq = n_blocks * cfg.group_size
-        valid_mask = np.zeros(padded_seq, dtype=bool)
-        valid_mask[:seq] = True
+        # Per-batch valid mask so the partial-block rows of one doc do
+        # not contaminate another doc's min/max. Shape (batch, padded_seq).
+        valid_mask = np.zeros((batch, padded_seq), dtype=bool)
+        valid_mask[:, :seq] = True
 
-        for b in range(batch):
-            buf = np.zeros((padded_seq, num_heads, head_dim), dtype=states.dtype)
-            buf[:seq] = states[b]
+        # Pad each doc to (padded_seq, num_heads, head_dim). The result
+        # is shape (batch, padded_seq, num_heads, head_dim) so the
+        # leading batch axis survives the per-doc reshape into
+        # (batch, n_blocks, group_size, num_heads, packed_head_dim, 2).
+        buf = np.zeros(
+            (batch, padded_seq, num_heads, head_dim), dtype=states.dtype
+        )
+        buf[:, :seq] = states
 
-            blocks = buf.reshape(
-                n_blocks, cfg.group_size, num_heads, packed_head_dim, 2
-            )
-            valid_blocks = valid_mask.reshape(n_blocks, cfg.group_size)
+        blocks = buf.reshape(
+            batch, n_blocks, cfg.group_size, num_heads, packed_head_dim, 2
+        )
+        valid_blocks = valid_mask.reshape(batch, n_blocks, cfg.group_size)
 
-            # V8 difference: do NOT collapse the pair axis (axis=4).
-            # min/max are computed over group_size only (axis=1).
-            valid_4d = valid_blocks[:, :, None, None, None]
-            masked_for_min = np.where(valid_4d, blocks, np.inf)
-            masked_for_max = np.where(valid_4d, blocks, -np.inf)
-            min_val = np.min(masked_for_min, axis=1).astype(np.float64)
-            max_val = np.max(masked_for_max, axis=1).astype(np.float64)
-            # min_val / max_val shape: (n_blocks, num_heads, packed_head_dim, 2)
+        # V8 difference: do NOT collapse the pair axis. The reduction
+        # axes are now (group_size,) only — batch and the rest of the
+        # (n_blocks, num_heads, packed_head_dim, 2) grid survive.
+        valid_6d = valid_blocks[:, :, :, None, None, None]
+        masked_for_min = np.where(valid_6d, blocks, np.inf)
+        masked_for_max = np.where(valid_6d, blocks, -np.inf)
+        min_val = np.min(masked_for_min, axis=2).astype(np.float64)
+        max_val = np.max(masked_for_max, axis=2).astype(np.float64)
+        # min_val / max_val shape: (batch, n_blocks, num_heads, packed_head_dim, 2)
 
-            empty = ~valid_blocks.any(axis=1)  # (n_blocks,)
+        empty = ~valid_blocks.any(axis=2)  # (batch, n_blocks)
 
-            range_ = max_val - min_val
-            scale = np.where(range_ > 0, range_ / max_range, 1.0)
-            zp = np.where(scale != 0, -np.rint(min_val / scale), 0.0)
+        range_ = max_val - min_val
+        scale = np.where(range_ > 0, range_ / max_range, 1.0)
+        zp = np.where(scale != 0, -np.rint(min_val / scale), 0.0)
 
-            scale_f32 = scale.astype(np.float32)
-            zp_f32 = zp.astype(np.float32)
-            # Broadcast empty mask over the pair axis.
-            scale_f32[empty] = 0.0
-            zp_f32[empty] = 0.0
+        scale_f32 = scale.astype(np.float32)
+        zp_f32 = zp.astype(np.float32)
+        # Broadcast empty mask over (num_heads, packed_head_dim, 2).
+        scale_f32[empty] = 0.0
+        zp_f32[empty] = 0.0
 
-            # Quantize: shape (n_blocks, group_size, num_heads, packed_head_dim, 2).
-            # Broadcast scale/zp over group_size only — pair axis is now
-            # carried by scale_f32 / zp_f32 directly.
-            scale_b = scale_f32[:, None, :, :, :]
-            zp_b = zp_f32[:, None, :, :, :]
-            safe_scale = np.where(scale_b == 0, 1.0, scale_b)
-            q = np.clip(
-                np.round(blocks / safe_scale + zp_b),
-                0,
-                max_range,
-            ).astype(np.uint8)
+        # Quantize. shape (batch, n_blocks, group_size, num_heads, packed_head_dim, 2).
+        # Broadcast scale/zp over group_size only — pair axis is now
+        # carried by scale_f32 / zp_f32 directly.
+        scale_b = scale_f32[:, :, None, :, :, :]
+        zp_b = zp_f32[:, :, None, :, :, :]
+        safe_scale = np.where(scale_b == 0, 1.0, scale_b)
+        q = np.clip(
+            np.round(blocks / safe_scale + zp_b),
+            0,
+            max_range,
+        ).astype(np.uint8)
 
-            q_lo = q[..., 0]
-            q_hi = q[..., 1]
-            packed = (q_lo & 0xF) | ((q_hi & 0xF) << 4)
+        q_lo = q[..., 0]
+        q_hi = q[..., 1]
+        packed = (q_lo & 0xF) | ((q_hi & 0xF) << 4)
 
-            packed = packed * valid_blocks[:, :, None, None].astype(np.uint8)
+        # Zero out padded rows in the last partial block. The valid
+        # mask already carries batch as the leading dim.
+        packed = (
+            packed
+            * valid_blocks[:, :, :, None, None].astype(np.uint8)
+        )
 
-            keys_int4[:] = packed
-            scales[:] = scale_f32
-            zero_points[:] = zp_f32
+        keys_int4[:] = packed
+        scales[:] = scale_f32
+        zero_points[:] = zp_f32
 
         return keys_int4, scales, zero_points
 

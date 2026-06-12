@@ -14,27 +14,50 @@ pivots are documented in bench_kv.py.
 """
 from __future__ import annotations
 
+import importlib.util
 from typing import Tuple
 
 import numpy as np
 
-# Lazy import: the Rust crate may not be built in the slim venv.
-try:
+# Sprint 2 / AUDIT #320a: the previous implementation did a top-level
+# import and cached the result in a static ``_RUST_AVAILABLE`` flag
+# at module import time. That was wrong — it required the test to
+# import the module after the wheel was installed, and the
+# ``RUST_AVAILABLE`` value was fixed for the life of the process.
+# The new implementation uses ``importlib.util.find_spec`` to test
+# *importability* on every call, so a wheel built mid-session (via
+# ``maturin develop``) is picked up the next time encode()/decode()
+# is invoked without requiring a Python restart.
+def _rust_available() -> bool:
+    """Live check for the in-tree ``turboquant_turing`` wheel.
+
+    Returns True if a wheel of that name is importable in the current
+    process, False otherwise. Uses ``importlib.util.find_spec`` (the
+    standard-library import-finder) so the check is fast and has no
+    side effects on the import system.
+    """
+    return importlib.util.find_spec("turboquant_turing") is not None
+
+
+def _import_rust_kv():
+    """Import the Rust symbols lazily, raising a clear error on miss."""
+    if not _rust_available():
+        raise ImportError(_RUST_NOT_BUILT_MSG)
     from apohara_context_forge.serving.turboquant_turing import (
-        encode_kv as _rust_encode_kv,
         decode_kv as _rust_decode_kv,
+        encode_kv as _rust_encode_kv,
     )
-    _RUST_AVAILABLE = True
-except ImportError:
-    _RUST_AVAILABLE = False
+    return _rust_encode_kv, _rust_decode_kv
+
 
 # Single source of truth for the not-built error message; both
-# encode() and decode() raise the same RuntimeError, so the message
+# encode() and decode() raise the same ImportError, so the message
 # lives here to keep the two error sites in sync.
 _RUST_NOT_BUILT_MSG = (
     "turboquant-turing Rust crate is not built. "
     "Run `cd apohara_context_forge/serving/turboquant_turing && "
-    "maturin develop` to build it."
+    "bash build.sh` (chains `cargo test --release && maturin "
+    "develop --release`) to build it."
 )
 
 
@@ -54,8 +77,7 @@ class TurboQuantKVShim:
         self.bits = bits
 
     def encode(self, weights: np.ndarray) -> Tuple[bytes, np.ndarray]:
-        if not _RUST_AVAILABLE:
-            raise RuntimeError(_RUST_NOT_BUILT_MSG)
+        _rust_encode_kv, _ = _import_rust_kv()
         flat = weights.astype(np.float32).reshape(-1)
         packed = _rust_encode_kv(flat.tobytes(), flat.size, self.bits)
         # Honest stub: real scales come from Lloyd-Max calibration
@@ -66,8 +88,7 @@ class TurboQuantKVShim:
     def decode(
         self, packed: bytes, scales: np.ndarray, shape: Tuple[int, ...]
     ) -> np.ndarray:
-        if not _RUST_AVAILABLE:
-            raise RuntimeError(_RUST_NOT_BUILT_MSG)
+        _, _rust_decode_kv = _import_rust_kv()
         n = int(np.prod(shape))
         raw = _rust_decode_kv(packed, n, self.bits)
         return np.frombuffer(raw, dtype=np.float32).reshape(shape)

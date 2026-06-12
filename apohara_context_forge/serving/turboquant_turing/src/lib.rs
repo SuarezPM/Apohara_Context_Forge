@@ -16,13 +16,26 @@
 //!     to floats. The round-trip MSE is bounded by the Lloyd-Max
 //!     optimality criterion against the unit-variance Beta prior.
 //!
+//! Sprint 2 / AUDIT #320a added two PyO3-bound kernels that mirror
+//! the in-tree Python paths so the vLLM-integration bench can avoid
+//! the per-doc numpy hop:
+//!   - `fwht_inplace(buf)`: in-place Walsh-Hadamard butterfly on a
+//!     1-D f32 array (mirror of
+//!     `apohara_context_forge/quantization/fwht.py:_fwht_butterfly_numpy`).
+//!   - `dequant_per_block(codes, scales, zps, group_size)`: per-block
+//!     INT4 dequant (mirror of
+//!     `apohara_context_forge/quantization/codec_v8.py:_dequantize_block`).
+//!
 //! Workgroup size: 32. This is the workgroup (block) size for the
 //! CUDA kernel path; the CPU path is scalar (no workgroup), but the
 //! constant is mirrored in the kernel signature for consistency.
 
 pub mod centroids;
+pub mod dequant;
+pub mod fwht;
 
 use centroids::centroids;
+use pyo3::prelude::*;
 
 /// Scalar Lloyd-Max quantization (CPU fallback).
 ///
@@ -141,4 +154,35 @@ mod tests {
         let result = std::panic::catch_unwind(|| encode_kv(&weights, 4, 5));
         assert!(result.is_err());
     }
+}
+
+/// PyO3 module entry point. Registers every Python-callable
+/// function on the `turboquant_turing` extension. Both the
+/// Lloyd-Max ``encode_kv`` / ``decode_kv`` (the long-standing
+/// crate surface) and the Sprint 2 / AUDIT #320a PyO3 kernels
+/// (``fwht_inplace``, ``dequant_per_block``) live on the same
+/// module so the Python shim sees a single importable namespace.
+#[pyo3::pymodule]
+fn turboquant_turing(_py: Python<'_>, m: &Bound<'_, pyo3::types::PyModule>) -> PyResult<()> {
+    m.add_function(pyo3::wrap_pyfunction!(encode_kv_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(decode_kv_py, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(fwht::fwht_inplace, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(dequant::dequant_per_block, m)?)?;
+    Ok(())
+}
+
+/// Thin PyO3 wrapper around the existing ``encode_kv`` so the
+/// function can be registered on the module without breaking the
+/// crate's pure-Rust public API (the round-trip integration test
+/// in ``tests/round_trip.rs`` imports ``encode_kv`` directly).
+#[pyo3::pyfunction]
+fn encode_kv_py(weights: Vec<f32>, n: usize, bits: u8) -> Vec<u8> {
+    encode_kv(&weights, n, bits)
+}
+
+/// PyO3 wrapper around ``decode_kv``. Same rationale as
+/// ``encode_kv_py``: the crate-level public API is unchanged.
+#[pyo3::pyfunction]
+fn decode_kv_py(packed: Vec<u8>, n: usize, bits: u8) -> Vec<f32> {
+    decode_kv(&packed, n, bits)
 }

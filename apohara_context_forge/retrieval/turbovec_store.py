@@ -230,12 +230,15 @@ class TurbovecStore:
     def _add_ram_optimised(self, vectors: np.ndarray) -> None:
         """Append to the per-nibble storage using the codec_v8 path.
 
-        Each document is quantized as a single 1-element block in a
-        (batch=1, seq=1, num_heads=1, head_dim=dim) 4D tensor (one
-        codec_v8 call per doc — codec_v8 is single-batch). The
+        Each document is quantized as a (seq=1, num_heads=1,
+        head_dim=dim) 3D slice. The whole batch is fed to
+        :meth:`CodecV8Quantizer._quantize_block_batched` in a single
+        call — the previous per-doc ``for i in range(n)`` loop was
+        the sprint-2 close path (Sprint 2 / AUDIT #320a). The
         per-nibble scales collapse to a per-doc
-        (packed_dim, 2) array. The pack layout mirrors the codec_v8
-        contract: low nibble in bits [0:4], high nibble in bits [4:8].
+        ``(packed_dim, 2)`` array. The pack layout mirrors the
+        codec_v8 contract: low nibble in bits [0:4], high nibble in
+        bits [4:8].
         """
         # Deferred import — codec_v8 imports from rotate_kv. The codec
         # is cheap to instantiate (~ no model load), so we keep it
@@ -248,7 +251,7 @@ class TurbovecStore:
         if not hasattr(self, "_ropt_quantizer"):
             cfg = CodecV8Config(
                 bits=self.bit_width,
-                group_size=_ROPT_GROUP_SIZE,
+                group_size=self._ropt_group_size,
                 sink_tokens=_ROPT_SINK_TOKENS,
                 use_fwht=False,
             )
@@ -256,19 +259,28 @@ class TurbovecStore:
 
         n = vectors.shape[0]
         packed_dim = self.dim // 2
-        # codec_v8 is single-batch (its inner loop writes the last
-        # batch's result into a fixed-shape buffer), so we call it
-        # once per doc. For the bench's typical insert sizes (<= 10K
-        # docs at a time) this is fine; a follow-up can vectorize.
-        codes_buf = np.empty((n, packed_dim), dtype=np.uint8)
-        scales_buf = np.empty((n, packed_dim, 2), dtype=np.float32)
-        zero_points_buf = np.empty((n, packed_dim, 2), dtype=np.float32)
-        for i in range(n):
-            doc = vectors[i].reshape(1, 1, 1, self.dim)
-            keys_int4, scales, zero_points = self._ropt_quantizer._quantize_block(doc)
-            codes_buf[i] = keys_int4[0, 0, 0]
-            scales_buf[i] = scales[0, 0]
-            zero_points_buf[i] = zero_points[0, 0]
+        # Sprint 2 / AUDIT #320a: single batched quantize call covers
+        # the whole n. We reshape (n, dim) → (n, 1, 1, dim) so the
+        # codec sees each doc as a single (seq=1, num_heads=1) row
+        # and treats the leading axis as the doc axis.
+        if n == 0:
+            codes_buf = np.empty((0, packed_dim), dtype=np.uint8)
+            scales_buf = np.empty((0, packed_dim, 2), dtype=np.float32)
+            zero_points_buf = np.empty((0, packed_dim, 2), dtype=np.float32)
+        else:
+            x_4d = vectors.reshape(n, 1, 1, self.dim)
+            keys_int4, scales, zero_points = (
+                self._ropt_quantizer._quantize_block_batched(x_4d)
+            )
+            # Crop back to the per-doc views used by the rest of the
+            # ram_optimised path. With seq=1, num_heads=1, group_size=1
+            # (the default), every output has a leading dim of 1 that
+            # we squeeze here.
+            codes_buf = keys_int4[:, 0, 0, 0, :].reshape(n, packed_dim)
+            scales_buf = scales[:, 0, 0, :, :].reshape(n, packed_dim, 2)
+            zero_points_buf = zero_points[:, 0, 0, :, :].reshape(
+                n, packed_dim, 2
+            )
         norms = np.linalg.norm(vectors, axis=1).astype(np.float32)
 
         if self._codes is None:
