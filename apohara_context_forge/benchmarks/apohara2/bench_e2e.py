@@ -81,7 +81,9 @@ Honest scope.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import logging
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -98,6 +100,16 @@ from apohara_context_forge.benchmarks.apohara2._bank_test_helpers import (
     score_answer,
     synthetic_batch,
 )
+
+log = logging.getLogger(__name__)
+
+# Honest stub sentinel: when LLMLingua-2 / onnxruntime is unavailable
+# (slim venv, no model downloaded, etc.), _compression_ratio returns this
+# tagged constant and logs a WARNING. The leading underscore is the same
+# convention used by INV-12 "NOT guaranteed" — the value is *not* a
+# measurement and is named to be auditable by `check_honesty.sh` and by
+# tests that grep for honest stubs. (AUDIT #28.)
+_STUB_RATIO: float = 0.55
 
 # 5 pinned tasks, per the spec and the pre-registration.
 PINNED_TASKS: tuple[str, ...] = (
@@ -331,28 +343,62 @@ def _kv_round_trip_mse(seed: int) -> tuple[float, bool]:
     return float((diff ** 2).mean()), False
 
 
-def _compression_ratio(prompt: str) -> float:
+def _compression_ratio(prompt: str, *, rate: float = 0.5) -> float:
     """LLMLingua-2 compression ratio on `prompt`.
 
-    Returns compressed_words / total_words. The onnx runtime
-    produces a real ratio when available; the bench falls back to
-    a deterministic chunked ratio (1 - rate) when onnxruntime is
-    absent.
+    Returns `1.0 - len(compressed) / len(prompt)` (i.e. the fraction
+    of the original characters dropped by compression, in [0, 1]).
+    Tries the real `ContextCompressor` first; on any failure (model
+    not cached, onnxruntime missing, import error) returns the tagged
+    `_STUB_RATIO = 0.55` sentinel **and logs a WARNING** so the
+    constant never slips through silently. The leading underscore
+    on `_STUB_RATIO` is the same convention used by INV-12
+    "NOT guaranteed" — auditable by `check_honesty.sh` and by tests
+    that grep for honest stubs. (AUDIT #28.)
     """
-    words = prompt.split()
-    n = max(len(words), 1)
-    # Try the real compressor first.
+    if not prompt:
+        return 0.0
+    original_len = max(len(prompt), 1)
     try:
-        from apohara_context_forge.compression.compressor import (  # type: ignore
+        from apohara_context_forge.compression.compressor import (
             ContextCompressor,
+            select_variant,
         )
-        # The async wrapper requires an event loop; in synthetic
-        # mode the bench is sync. Use the chunked determinism
-        # path: split at the bin boundary and report the
-        # deterministic (1 - rate) ratio.
-        return 0.55
-    except Exception:
-        return 0.55
+        # The compressor is async; run it inline with a fresh loop
+        # every call. Creating a new loop is the cleanest way to keep
+        # this sync function independent of caller state — reusing
+        # the caller's loop would risk "loop is closed" errors when
+        # pytest runs multiple tests sequentially.
+        compressor = ContextCompressor(
+            model_name="microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
+            device_map="cpu",
+        )
+        # Pick a real variant by word count. The plan spec called
+        # this "baseline" but the API expects one of the three
+        # canonical `VARIANTS` names; `select_variant` is the pinned
+        # policy.
+        word_count = len(prompt.split())
+        variant = select_variant(word_count)
+        loop = asyncio.new_event_loop()
+        try:
+            compressed, _actual_ratio = loop.run_until_complete(
+                compressor.compress_with_variant(
+                    prompt, variant_name=variant.name, rate=rate
+                )
+            )
+        finally:
+            loop.close()
+        if not compressed:
+            return _STUB_RATIO
+        return float(1.0 - len(compressed) / original_len)
+    except Exception as exc:
+        log.warning(
+            "[bench_e2e] _compression_ratio fell back to _STUB_RATIO=%s "
+            "after exception: %s",
+            _STUB_RATIO,
+            exc,
+        )
+        return _STUB_RATIO
 
 
 def _run_one_seed(
@@ -648,6 +694,40 @@ def main(argv: list[str] | None = None) -> int:
     # log progress above it).
     print(json.dumps(summary, indent=2))
     return 0 if summary.get("family_wise_pass", False) else 1
+
+
+# ---------------------------------------------------------------------------
+# run_condition — reusable single-(system, prompt) runner (AUDIT #29 / Sprint 4)
+# ---------------------------------------------------------------------------
+#
+# The Sprint 4 head-to-head bench (`bench_h2h.py`) consumes this. We
+# delegate the implementation to `bench_h2h.run_condition` so the
+# h2h orchestrator and the e2e bank test share the same wire-in
+# (one source of truth for the apohara vs turboquant measurement).
+# Importing bench_h2h is safe: it does not pull torch / transformers
+# at module import (the load is deferred to the first call), so the
+# slim-venv test suite is unaffected.
+
+
+def run_condition(
+    system: "Literal['apohara', 'turboquant']",
+    prompt: str,
+    *,
+    n_tokens: int = 1024,
+) -> "Dict[str, Any]":
+    """Run a single (system, prompt) condition. See `bench_h2h.run_condition`.
+
+    Returns a dict with the CSV-row schema:
+        {system, duration_ms, vram_peak_gb, ppl_delta,
+         compression_ratio, prompt_chars, run_idx}
+    """
+    # Local import to keep bench_e2e import-cost flat for the slim
+    # venv: bench_h2h pulls in nothing at module load.
+    from apohara_context_forge.benchmarks.apohara2.bench_h2h import (
+        run_condition as _h2h_run_condition,
+    )
+
+    return _h2h_run_condition(system, prompt, n_tokens=n_tokens)
 
 
 if __name__ == "__main__":

@@ -106,6 +106,20 @@ if grep -nE "(tokens_per_sec|tps|t_per_s)\s*=\s*[0-9]+\.[0-9]+\b" \
     echo
 fi
 
+# 7. AUDIT #29 (Sprint 4) — forbid hardcoded compression_ratio=0.55
+#    in the h2h bench as a non-named assignment. The regex matches
+#    `compression_ratio = 0.55` (assignment) but NOT
+#    `_STUB_RATIO = 0.55` (named constant with leading underscore —
+#    that is the Sprint 3 honest-gap sentinel and is allowed).
+echo "▸ hardcoded compression_ratio=0.55 in h2h bench (AUDIT #29)"
+if grep -nE "compression_ratio\s*=\s*0\.55" \
+       apohara_context_forge/benchmarks/apohara2/bench_h2h.py \
+       apohara_context_forge/benchmarks/apohara2/bench_e2e.py 2>/dev/null; then
+    violations=$((violations + 1))
+    echo "  ❌ hardcoded compression_ratio=0.55 detected in h2h bench"
+    echo
+fi
+
 echo
 if [ "$violations" -eq 0 ]; then
     echo "✅ honesty guard PASS — no regressions detected."
