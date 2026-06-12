@@ -1,0 +1,58 @@
+# wow8gb.yaml — Sprint 5 (AUDIT #30)
+#
+# Source of truth for the three "WOW 8 GB" headline conditions on the
+# local RTX 2060 SUPER (8 GB). The Python orchestrator reads this file
+# verbatim — there is no duplicate of this schema in the .py source.
+#
+# Per the spec (`.omc/specs/deep-interview-apohara-2-0.md` and the
+# plan at `~/.claude/plans/delegated-snacking-creek.md`):
+#
+#   * A — the "sweet spot": 9B Q4_K_M + KV Q8 + LLMLingua-2, expected
+#         to fit in 5-6 GB on 8 GB hardware and deliver 50-65 t/s.
+#   * B — the honest "cabe, no es usable" arm: 32B Q3_K_S with full
+#         offload to the 46 GB system RAM. Headline is "it fits, it is
+#         not usable" (2-5 t/s, RAM bandwidth bound). The honest gap is
+#         the message; the number is the measurement.
+#   * C — MoE routing can be variance-bound: 35B-A3B at Q4_K_M is
+#         expected ~21 GB; the bench reports whatever the monitor sees.
+#
+# Honest-scope notes (mirrored in AUDIT #30):
+#
+#   * The bench does NOT assume the model is available. When the
+#     HuggingFace download / local cache is missing, the row's
+#     `status` is `skipped` and every numeric cell is the empty string
+#     (NOT "N/A" or "TODO" — those are forbidden by the test suite).
+#   * The model id is the only thing needed to start a download or
+#     probe the cache. The orchestrator is responsible for the
+#     decision to attempt the load.
+#   * Quantisation hints (`q4_k_m` / `q3_k_s` / `q8_0`) name the
+#     **target** quant format for the headline number; on a slim venv
+#     without vLLM/transformers the bench degrades to a "skipped"
+#     status rather than fabricating a number.
+
+# YAML schema (loose, see tests/test_bench_wow8gb_yaml.py):
+#   conditions: list of {id, label, model, kv_cache_dtype, compression,
+#                        context, offload?}
+conditions:
+
+  - id: A
+    label: "9B Q4_K_M + KV Q8 + LLMLingua-2"
+    model: "Qwen/Qwen3-9B"
+    kv_cache_dtype: "q8_0"
+    compression: "llmlingua-2"
+    context: 8192
+
+  - id: B
+    label: "32B Q3_K_S + 46GB RAM offload (honest 'cabe, no es usable')"
+    model: "Qwen/Qwen3-32B"
+    kv_cache_dtype: "q3_k_s"
+    compression: "none"
+    context: 8192
+    offload: "auto"
+
+  - id: C
+    label: "35B-A3B MoE Q4_K_M"
+    model: "Qwen/Qwen3-30B-A3B"
+    kv_cache_dtype: "q4_k_m"
+    compression: "none"
+    context: 8192

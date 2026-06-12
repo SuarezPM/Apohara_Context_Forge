@@ -93,6 +93,19 @@ if grep -n "return 45.0, 192.0" apohara_context_forge/metrics/collector.py >/dev
     echo
 fi
 
+# 6. AUDIT #30 (Sprint 5) — forbid hardcoded tokens/s or VRAM literals
+#    in the wow8gb bench. Every value in that file must come from
+#    VRAMMonitor or time.perf_counter(). Allowlist is not needed
+#    because every assignment in the bench reads from a probe.
+echo "▸ hardcoded tokens/s literal in bench_wow8gb.py (AUDIT #30)"
+if grep -nE "(tokens_per_sec|tps|t_per_s)\s*=\s*[0-9]+\.[0-9]+\b" \
+       apohara_context_forge/benchmarks/apohara2/bench_wow8gb.py 2>/dev/null; then
+    violations=$((violations + 1))
+    echo "  ❌ regression: hardcoded tokens/sec literal in wow8gb bench."
+    echo "     Read from VRAMMonitor + time.perf_counter() instead."
+    echo
+fi
+
 echo
 if [ "$violations" -eq 0 ]; then
     echo "✅ honesty guard PASS — no regressions detected."
