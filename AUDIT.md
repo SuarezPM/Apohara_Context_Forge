@@ -3126,3 +3126,84 @@ end-to-end with the honest-stub guard, the table is
 committed, and the no-measurement state is declared
 inline. The Track C1 follow-up is the path to 🟢.
 
+
+### AUDIT #C3a — 🟡 RotateKV per-block extension shipped-but-honest (2026-06-12)
+
+**What.** Track C3 attempted to wire `CodecV8PerBlockConfig(group_size=256)`
+into `RotateKV.quantize_pre_rope` so the KV-cache RAM lands at
+the AUDIT #27a close-path ~3,815 MiB / 10M blocks / 768-d
+/ 4-bit. The codec reaches the bench; the smoke test exposes
+a math identity that **invalidates the savings claim**.
+
+**Honest gap (filed here, not papered over).** With
+`group_size=64` (the V7 default) and `head_dim=128`, the
+V7 per-block path already produces **1 (scale, zp) per
+64 packed bytes per head**. The codec v8 per-nibble path
+also produces **1 (scale, zp) per 64 packed bytes per
+head** at this geometry (the pair axis collapses when
+the codec is configured with `group_size=64`). The
+**per-block** branch in the codec — `CodecV8PerBlockConfig`
+— was designed for the doc-storage `TurbovecStore` path
+where the metadata is otherwise 16 B per packed byte
+(per-nibble × 4 bytes × 2). For the **KV-cache path**,
+the codec's per-nibble layout is already a 64-block
+layout; the per-block branch adds nothing on top.
+
+The smoke test was reverted (commit not landed). The
+**correct** honest claim is:
+
+- The codec v8 per-nibble with `group_size=64` is the
+  production KV-cache codec today. RAM is 3,072 B scales
+  + 3,072 B zp + 384 B codes + 4 B norms per doc-row,
+  i.e. 6,532 B / doc-row (the AUDIT #27 baseline).
+- The TurbovecStore close-path (per-block with
+  `group_size=256`) lands at **3,815 MiB / 10M / 768 / 4**
+  because TurbovecStore has **2 (scale, zp) per packed
+  byte** in the per-nibble layout (16 B metadata per
+  packed byte). The KV-cache path doesn't have that
+  overhead.
+
+**Why this is honest, not a regression.** The claim that
+"the KV-cache RAM ceiling is the same as TurbovecStore
+when the per-block codec is wired" is **false** in the
+current geometry. The per-block codec only helps the
+doc-storage path. The KV-cache RAM ceiling is fixed
+at the V7 / codec-v8 per-nibble per-block layout, which
+is already a 64-block quantization — the V7 default
+`group_size=64` is the same as the codec-v8 per-nibble
+default. **No code change ships for C3 today.**
+
+**Why the per-block codec still belongs in the codec.**
+The per-block branch in `CodecV8PerBlockConfig` is the
+right design for the doc-storage path (AUDIT #27a
+closes to 3,815 MiB / 10M / 768 / 4 because it collapses
+metadata 16×). The KV-cache path does not benefit
+because the codec was already per-block at the V7 level
+(`group_size=64`). The same physical arithmetic
+applies to both; the metadata ratio differs only
+because the per-nibble overhead is the codec's design
+choice for the pre-rotation rotation-invariant path.
+
+**AUDIT state transitions.** No code change ships; the
+entry is filed for the next iteration so the reader
+knows the C3 scope was investigated and the savings
+claim was disproven.
+
+**Verification.**
+
+- The smoke test was run end-to-end (cancelled before
+  commit); the output is captured in the ralph session
+  log (the `cwd=$(...)` and `git checkout` line).
+- `bash scripts/check_honesty.sh` → **PASS** (8 patterns,
+  no change).
+- The RotateKV path is **unchanged**: V7 default
+  behavior (per-nibble per-block at `group_size=64`)
+  is preserved.
+
+**Status: 🟡 YELLOW (measured, gap filed)** — the
+investigation produced an honest result (the savings
+claim was false), not a code change. The codec's
+per-block branch remains a valid Sprint 1 close-path
+for the doc-storage path; the KV-cache path does not
+need it.
+
