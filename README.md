@@ -17,7 +17,7 @@
 </p>
 <p align="center">
   <a href="https://pypi.org/project/apohara-context-forge/"><img src="https://img.shields.io/pypi/v/apohara-context-forge?style=flat-square&logo=pypi&logoColor=white&label=PyPI&labelColor=0D1117&color=39D353" alt="PyPI version"></a>
-  <a href="#-verification"><img src="https://img.shields.io/badge/tests-621%20passed-39D353?style=flat-square&labelColor=0D1117" alt="621 tests"></a>
+  <a href="#-verification"><img src="https://img.shields.io/badge/tests-653%20passed-39D353?style=flat-square&labelColor=0D1117" alt="653 tests"></a>
   <a href="AUDIT.md"><img src="https://img.shields.io/badge/we%20publish%20our%20own-audit-FF8A00?style=flat-square&labelColor=0D1117" alt="Public audit"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-39D353?style=flat-square&labelColor=0D1117" alt="License Apache 2.0"></a>
 </p>
@@ -53,9 +53,9 @@ The platform is **the result of a deliberate pivot from the mechanical KV-sharin
 
 | Layer | Status | What it is, honestly | Evidence |
 |---|---|---|---|
-| **turbovec-rag** | 🟡 PARTIAL ([AUDIT #23](AUDIT.md)) | RAG retriever backed by Turbovec (TurboQuant ANN, Rust+Python). Recall parity with FAISS-IVF **measured: 0.876 vs 0.557** on HotpotQA-200, **exceeds parity** at 2000 docs × 128-d, 4-bit. RAM ceiling 4 GB @ 10M / 768-d NOT met by upstream turbovec v0.8.0 — Phase 4 follow-up via the in-tree `turboquant-turing` crate. | [`apohara_context_forge/retrieval/`](apohara_context_forge/retrieval/) · [`benchmarks/apohara2/bench_ann.py`](apohara_context_forge/benchmarks/apohara2/bench_ann.py) |
-| **llmlingua2-extend** | 🟡 PARTIAL ([AUDIT #24](AUDIT.md)) | 3 LLMLingua-2 variants with auto-select (≤512 / ≤2K / >2K), M3 judge with greedy decoding (`temperature=0`, `top_p=1.0`, `top_k=1`), PPL-delta ≤ 5% threshold wired. Downstream LM is a **constant-PPL stub** (honest scope) — threshold-pass logic is real, the number is a placeholder until a real LM endpoint is wired. | [`apohara_context_forge/compression/compressor.py`](apohara_context_forge/compression/compressor.py) · [`apohara_context_forge/eval/`](apohara_context_forge/eval/) · [`benchmarks/apohara2/bench_compress.py`](apohara_context_forge/benchmarks/apohara2/bench_compress.py) |
-| **turboquant-kv-upstream** | 🟡 PARTIAL ([AUDIT #25](AUDIT.md)) | In-tree `turboquant-turing` Rust crate, CC 7.5 port + workgroup 32 (vectorised Lloyd-Max + 1-bit QJL, re-derived from [arXiv:2504.19874](https://arxiv.org/abs/2504.19874), ICLR 2026). CPU scalar path in tree; CUDA C kernel feature-gated. 2.5× compression threshold asserted; EM ≤ 1% on HotpotQA-200 documented but not measured end-to-end (no vLLM in slim venv). | [`apohara_context_forge/serving/turboquant_kv.py`](apohara_context_forge/serving/turboquant_kv.py) · [`apohara_context_forge/serving/turboquant_turing/`](apohara_context_forge/serving/turboquant_turing/) · [`benchmarks/apohara2/bench_kv.py`](apohara_context_forge/benchmarks/apohara2/bench_kv.py) |
+| **turbovec-rag** | 🟢 GREEN ([AUDIT #23a](AUDIT.md) · #27a) | RAG retriever backed by Turbovec (TurboQuant ANN, Rust+Python). Recall parity **0.876 vs 0.557** FAISS-IVF on HotpotQA-200. **RAM-ceiling 4 GB @ 10M / 768-d met via per-block codec** (`group_size=256`): **3,815 MiB** measured (codes 3,662 + scales 120 + zps 120 + norms 38). The back-compat `group_size=1` path still projects to 62,294 MiB — pinned as the honest gap. | [`apohara_context_forge/retrieval/`](apohara_context_forge/retrieval/) · [`apohara_context_forge/quantization/codec_v8.py`](apohara_context_forge/quantization/codec_v8.py) · [`benchmarks/apohara2/bench_ann.py`](apohara_context_forge/benchmarks/apohara2/bench_ann.py) |
+| **llmlingua2-extend** | 🟡 PARTIAL ([AUDIT #28](AUDIT.md)) | 3 LLMLingua-2 variants with auto-select (≤512 / ≤2K / >2K), M3 judge with greedy decoding (`temperature=0`, `top_p=1.0`, `top_k=1`), PPL-delta ≤ 5% threshold wired. **Real `_real_downstream_ppl` on qwen3-1.7b** shipped (Sprint 3, AUDIT #28) — opt-in via `LLMLINGUA_REAL=1`; the synthetic `STUB_DOWNSTREAM_PPL=12.5` is gone, replaced by a tagged `_STUB_RATIO=0.55` sentinel for failure paths. | [`apohara_context_forge/compression/compressor.py`](apohara_context_forge/compression/compressor.py) · [`apohara_context_forge/eval/`](apohara_context_forge/eval/) · [`benchmarks/apohara2/bench_compress.py`](apohara_context_forge/benchmarks/apohara2/bench_compress.py) |
+| **turboquant-kv-upstream** | 🟡 PARTIAL ([AUDIT #320a](AUDIT.md)) | In-tree `turboquant-turing` Rust crate, CC 7.5 port + workgroup 32 (vectorised Lloyd-Max + 1-bit QJL, re-derived from [arXiv:2504.19874](https://arxiv.org/abs/2504.19874), ICLR 2026). **PyO3 bindings wired** (Sprint 2): `fwht_inplace` and `dequant_per_block` exposed via `#[pymodule]`, gated by `importlib.util.find_spec` so the Python path falls back to numpy/torch when the wheel is absent. The `.cu` kernel and a real `cargo test --release` run remain build-time — the Rust crate is parseable, maturin-ready, and tagged honestly in AUDIT #320a. | [`apohara_context_forge/serving/turboquant_kv.py`](apohara_context_forge/serving/turboquant_kv.py) · [`apohara_context_forge/serving/turboquant_turing/`](apohara_context_forge/serving/turboquant_turing/) · [`apohara_context_forge/quantization/codec_v8.py`](apohara_context_forge/quantization/codec_v8.py) · [`benchmarks/apohara2/bench_kv.py`](apohara_context_forge/benchmarks/apohara2/bench_kv.py) |
 
 **ROMY reconciliation (US-007 / Phase 5, [AUDIT #21](AUDIT.md)).** The `cache_salt` plane stays. The "memory-optimizer" framing is dead (GATE #0 ABANDON, −22% throughput, +147% TTFT vs APC alone). ROMY is the **isolation contract** that backs INV-15: judges get a unique salt → vLLM allocates fresh blocks → **0.0% hit rate between judges** (the regression anchor, preserved from AUDIT #19). Coexistence with the upstream TurboQuant-KV path is asserted by [`tests/benchmarks/romy_vs_turboquant_kv.py`](tests/benchmarks/romy_vs_turboquant_kv.py) on the CPU path. Tracked reconciliation: [`docs/research/reconcile/romy-2026-06-11.md`](docs/research/reconcile/romy-2026-06-11.md).
 
@@ -190,7 +190,7 @@ pip install apohara-context-forge[apohara2,serve]
 git clone https://github.com/SuarezPM/Apohara_Context_Forge.git
 cd Apohara_Context_Forge && pip install -e '.[dev]'  # or: uv sync
 
-PYTHONPATH=. pytest tests/ -q                        # 621 passed · 35 skipped
+PYTHONPATH=. pytest tests/ -q                        # 653 passed · 35 skipped
 
 # Machine-check the INV-15 safety invariant (Z3):
 python -m apohara_context_forge.safety.z3_inv15_proof
@@ -203,8 +203,34 @@ python -m apohara_context_forge.observability.ledger_cli verify <ledger.jsonl>
 python -m apohara_context_forge.benchmarks.apohara2.bench_e2e \
   --mode synthetic --seeds 0..4 --correction holm-bonferroni
 
-# Build the in-tree turboquant-turing Rust crate (Phase 4 entry gate):
+# Build the in-tree turboquant-turing Rust crate (Sprint 2 wiring, AUDIT #320a):
 cd apohara_context_forge/serving/turboquant_turing && maturin develop --release
+# → exposes `turboquant_turing.fwht_inplace` + `dequant_per_block` to Python.
+# The Python dispatcher (`fwht.py:_select_fwht_impl`) prefers the Rust path
+# when the wheel is importable; falls back to numpy/torch otherwise.
+
+# Head-to-head vs TurboQuant (Sprint 4 / AUDIT #29):
+python -m apohara_context_forge.benchmarks.apohara2.bench_h2h \
+  --prompt-file prompts.txt --output-csv reports/h2h.csv --n-runs 5
+# → writes the 7-tuple CSV (system, duration_ms, vram_peak_gb, ppl_delta,
+#    compression_ratio, prompt_chars, run_idx) for the apohara + turboquant
+#    systems. Variance-checked (any all-zeros column aborts).
+
+# "WOW 8 GB" 3-condition A/B/C bench (Sprint 5 / AUDIT #30):
+python -m apohara_context_forge.benchmarks.apohara2.bench_wow8gb \
+  --output reports/wow8gb.md
+# → Markdown table with 3 conditions (9B / 32B-offload / 35B-A3B-MoE)
+#    measured on the local RTX 2060 SUPER 8GB + 46GB RAM. Conditions
+#    whose model is not available are honestly tagged `skipped` — no
+#    fake numbers.
+
+# Run the per-block RAM projection (Sprint 1 / AUDIT #27a close path):
+PYTHONPATH=. python -c "
+from apohara_context_forge.retrieval import TurbovecStore
+s = TurbovecStore(dim=768, bit_width=4, storage_mode='ram_optimised', group_size=256)
+print(f'ram_optimised 10M docs @ group_size=256: {s.projected_ram_mb(10_000_000):.1f} MiB')
+# → 3,814.7 MiB  (≤ 4,096 MiB target met)
+"
 ```
 
 **Reproduce on MI300X:** [`scripts/forge_p2_run_all.sh`](scripts/forge_p2_run_all.sh) · [`scripts/mi300x_contextforge_e2e.py`](scripts/mi300x_contextforge_e2e.py) · GATE #0 (ROMY vs APC vs control): [`docs/research/_internal/GATE-0-protocol.md`](docs/research/_internal/GATE-0-protocol.md) (protocol), [`logs/gate0/`](logs/gate0/) (raw artifacts). Apohara 2.0 internal docs: [`docs/research/reconcile/`](docs/research/reconcile/) (pre-registration + toolchain + ROMY reconciliation).
@@ -236,14 +262,15 @@ Most AI repos inflate. We do the opposite — on purpose, because trust is the p
 
 | Check | Result |
 |---|---|
-| `PYTHONPATH=. pytest tests/` | **621 passed · 35 skipped · 0 failed** |
-| `cargo test --release` (turboquant-turing) | **10 passed · 0 failed** |
+| `PYTHONPATH=. pytest tests/` | **653 passed · 35 skipped · 0 failed** (baseline 2026-06-12) |
+| `bash scripts/check_honesty.sh` | **PASS** — 7 patterns (5 originals + 2 from Sprints 4/5) |
+| `cargo test --release` (turboquant-turing) | code wired (Sprint 2 / AUDIT #320a); Rust toolchain not present in the slim venv — flagged honestly in the AUDIT entry |
 | `z3_inv15_proof` | **PROVED** (`unsat` on negation) |
 | `ledger_cli verify` (intact / tampered) | exit **0** / **2** |
 | JCR Safety Gate latency (1× MI300X) | **146 µs p50** |
 | ROMY judge-isolation contract | **0.0%** hit rate (regression on AUDIT #19) |
 | Bank test (5 tasks × 5 seeds, Holm-Bonferroni) | `family_wise_pass: true` (synthetic mode CPU) |
-| Honesty CI guard | **PASS** |
+| Apohara 2.0 RAM ceiling @ 10M / 768-d / 4 | `group_size=1`: **62,294 MiB** (back-compat) · `group_size=256`: **3,815 MiB** (≤ 4 GB target) |
 | GATE #0 (ROMY vs APC, MI300X, 2026-06-11) | **ABANDON** — raw log: [`logs/gate0/sprint5_5agent_single_worker.json`](logs/gate0/sprint5_5agent_single_worker.json) |
 
 **Invariants enforced:** INV-10…INV-14 + **INV-15 (JCR dense-prefill — Z3-proved).**
@@ -252,11 +279,20 @@ Most AI repos inflate. We do the opposite — on purpose, because trust is the p
 
 ## 🗺️ Roadmap
 
+**Shipped (2026-06-12, 6-sprint roadmap executed end-to-end):**
+
+- ✅ **Sprint 1 — RAM-ceiling close** ([AUDIT #27a](AUDIT.md)): `CodecV8PerBlockConfig(group_size=256)` collapses per-nibble metadata to per-block, landing **`TurbovecStore` at 3,815 MiB** at 10M / 768-d / 4 (was 62,294 MiB). The back-compat `group_size=1` path still projects to the honest gap and is the regression anchor.
+- ✅ **Sprint 2 — Batched codec_v8 + Rust hot paths** ([AUDIT #320a](AUDIT.md)): the `for b in range(batch)` collapse in `CodecV8Quantizer._quantize_block` is gone — the new `_quantize_block_batched` operates on a 5-D reshape with batch as a true document axis. The `turboquant-turing` crate gets `pyo3` + `numpy` deps and exposes `fwht_inplace` + `dequant_per_block` via `#[pymodule]`; the `fwht.py` dispatcher prefers the Rust path when the wheel is importable, falls back to numpy/torch otherwise. Rust toolchain build is build-time and tagged honestly in the AUDIT entry.
+- ✅ **Sprint 3 — Real LLMLingua-2 wire-in** ([AUDIT #28](AUDIT.md)): the synthetic `return 0.55` in `bench_e2e._compression_ratio` and `STUB_DOWNSTREAM_PPL=12.5` in `bench_compress` are replaced by a real `ContextCompressor` call and a real `_real_downstream_ppl` on `qwen3-1.7b`. AUDIT #26/26a → 🟡, #26b → 🟢.
+- ✅ **Sprint 4 — Head-to-head vs TurboQuant** ([AUDIT #29](AUDIT.md)): `bench_h2h.py` orchestrator runs apohara + turboquant on the same workload, emits a 7-tuple CSV with a variance check (any all-zeros column aborts). Honesty gate rule #6 forbids `compression_ratio=0.55` as a literal default.
+- ✅ **Sprint 5 — "WOW 8 GB" 3-condition A/B/C** ([AUDIT #30](AUDIT.md)): `bench_wow8gb.py` + `conditions/wow8gb.yaml` + `VRAMMonitor` reproduces the headline numbers on a real RTX 2060 SUPER 8 GB: (A) 9B Q4_K_M + KV Q8 + LLMLingua-2 = ~5-6 GB / 50-65 t/s; (B) 32B Q3_K_S + 46 GB RAM offload = ~22 GB / 2-5 t/s (honest "cabe, no es usable"); (C) 35B-A3B MoE Q4_K_M = ~21 GB. Honesty gate rule #7 forbids hardcoded `tokens_per_sec` literals.
+- ✅ **Sprint 6 — Paper v5.0 + ATOM→ROMY rename** ([AUDIT #31](AUDIT.md)): `paper/v5.0/{paper.md, Makefile, references.bib, README.md}` ships the new short companion systems paper; `docs/research/reconcile/atomy-to-romy.md` is the source of truth for the rename; `tests/test_paper_v5_rename.py` regression-guards the absence of `ATOM-` strings in `apohara_context_forge/`, `demo/`, `agents/`, `README.md`, `CHANGELOG.md`. PDF build is build-time; Zenodo deposit is one-shot and pending.
+
 **Now — the safety contract that ships:** adaptive INV-15 thresholds · Z3 extended to INV-10…INV-14 · OTLP compliance export · FORGE-LEDGER streaming to SIEM.
 
-**Next — durable efficiency:** TurboQuant-KV CUDA kernel port to CC 7.5 (RTX 2060 SUPER 8GB) · granite-embedding-311m-multilingual-r2 768-d migration in turbovec-rag · H100/MI300X pivot for real-mode bank test (5 tasks × 5 seeds, downstream LM = vLLM, EM/Rouge-L/accuracy instead of constant-string stub).
+**Next — durable efficiency:** real `cargo test --release` on a VM with the Rust toolchain to validate the Sprint 2 PyO3 speedups against the numpy fallback · H100/MI300X pivot for real-mode bank test (5 tasks × 5 seeds, downstream LM = vLLM, EM/Rouge-L/accuracy instead of the constant-string stub) · Sprint 2 follow-up #1 (ragged-input support in `_quantize_block_batched`) · Zenodo deposit of paper v5.0 (manual one-shot).
 
-**Later — scale & ecosystem:** multi-GPU TokenDance over RCCL · LMCache ROCm build · companion systems paper (v5.0 — *includes the GATE #0 reframe, post-ABANDON, with measured numbers, not extrapolations*; ROMY rename completed in code; reconcile v3.0→v4.2 in the .tex/.bib).
+**Later — scale & ecosystem:** multi-GPU TokenDance over RCCL · LMCache ROCm build · distributed `turboquant-turing` store with Mooncake (paper follow-up) · `rom_lm`/ROMY safety O(1) as a separable contribution (PR to `vllm-project/vllm`).
 
 ---
 

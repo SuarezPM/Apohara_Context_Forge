@@ -42,14 +42,19 @@ def _rust_available() -> bool:
 def _import_rust_kv():
     """Import the Rust symbols lazily, raising a clear error on miss.
 
-    The wheel's PyO3 module exports the Lloyd-Max helpers as
-    ``encode_kv_py`` and ``decode_kv_py`` (the ``_py`` suffix
-    distinguishes the bound surface from the legacy
-    ``encode_kv`` / ``decode_kv`` symbols on the ``centroids``
-    re-export). The Sprint 2 / AUDIT #320a close path aliases
-    them to the V6.1 ``encode_kv`` / ``decode_kv`` names so
-    legacy callers (and the test suite) keep working without
-    a code churn pass.
+    The wheel's PyO3 module exposes two flavors of the
+    Lloyd-Max encode/decode:
+
+    * ``encode_kv(weights, n, bits)`` / ``decode_kv(packed, n, bits)``
+      — the long-standing crate-level public surface (the
+      ``tests/round_trip.rs`` integration test imports these).
+    * ``encode_kv_py(weights: Vec<f32>, n, bits)`` /
+      ``decode_kv_py(packed: Vec<u8>, n, bits)`` — the PyO3-bound
+      versions registered on the ``turboquant_turing`` Python
+      module. The ``_py`` suffix distinguishes the bound surface
+      from the legacy ``encode_kv`` / ``decode_kv`` symbols on the
+      ``centroids`` re-export (PyO3 disallows the same name on
+      multiple ``#[pyfunction]`` entry points).
     """
     if not _rust_available():
         raise ImportError(_RUST_NOT_BUILT_MSG)
@@ -99,7 +104,14 @@ class TurboQuantKVShim:
     def encode(self, weights: np.ndarray) -> Tuple[bytes, np.ndarray]:
         _rust_encode_kv, _ = _import_rust_kv()
         flat = weights.astype(np.float32).reshape(-1)
-        packed = _rust_encode_kv(flat.tobytes(), flat.size, self.bits)
+        # The Rust kernel exposes ``encode_kv_py(weights: Vec<f32>,
+        # n, bits) -> Vec<u8>``. PyO3 0.22 converts a Python
+        # ``list[float]`` to ``Vec<f32>``; we route through the
+        # list representation to avoid the ``bytes`` →
+        # ``Vec<f32>`` conversion the legacy ``flat.tobytes()``
+        # approach used (which PyO3 0.22 cannot auto-interpret).
+        packed_list = _rust_encode_kv(flat.tolist(), flat.size, self.bits)
+        packed = bytes(packed_list)
         # Honest stub: real scales come from Lloyd-Max calibration
         # (`codec_v8.py` is the calibration path the shim mirrors).
         scales = np.ones(weights.shape, dtype=np.float32)
@@ -110,5 +122,11 @@ class TurboQuantKVShim:
     ) -> np.ndarray:
         _, _rust_decode_kv = _import_rust_kv()
         n = int(np.prod(shape))
-        raw = _rust_decode_kv(packed, n, self.bits)
-        return np.frombuffer(raw, dtype=np.float32).reshape(shape)
+        # The Rust kernel exposes ``decode_kv_py(packed: Vec<u8>,
+        # n, bits) -> Vec<f32>``. PyO3 0.22 converts a Python
+        # ``list[int]`` (the bytes-as-ints form) to ``Vec<u8>``;
+        # we pass the bytes as a list to avoid the legacy
+        # ``np.frombuffer`` → ``bytes`` round-trip that the
+        # ``Vec<u8>`` parameter cannot ingest.
+        raw_list = _rust_decode_kv(list(packed), n, self.bits)
+        return np.asarray(raw_list, dtype=np.float32).reshape(shape)
