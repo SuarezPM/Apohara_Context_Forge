@@ -1,10 +1,13 @@
-"""US-004 retrieval tests (Phase 2 acceptance).
+"""US-004 retrieval tests (Phase 2 acceptance) + US-012 768-d migration.
 
 The real `TurbovecStore` is backed by the `turbovec` PyPI package
-(CPU SIMD); the `RetrievalEngine` glues the existing 384-d
-`EmbeddingEngine` to the
-index. The bench is exercised by a pytest function (not a subprocess)
-so the suite stays fast.
+(CPU SIMD); the `RetrievalEngine` glues the 768-d `EmbeddingEngine`
+(US-012 default = ``ibm-granite/granite-embedding-311m-multilingual-r2``
+MRL-truncated to 768d) to the index. The bench is exercised by a
+pytest function (not a subprocess) so the suite stays fast.
+
+The pre-US-012 16 tests stay as legacy back-compat smoke (marked
+``@pytest.mark.legacy``); US-012 adds 6 new tests for the 768-d path.
 
 See `.omc/plans/apohara-2-0.md` Step 2.4.
 """
@@ -20,18 +23,24 @@ import pytest
 
 turbovec = pytest.importorskip("turbovec")
 
+# Mark every test in the legacy 384-d back-compat block.
+legacy = pytest.mark.legacy
+
 
 # ------------------------------------------------------------ TurbovecStore
+@legacy
 def test_retrieval_package_imports():
     """The package must be importable (no missing __init__, no syntax errors)."""
     import apohara_context_forge.retrieval  # noqa: F401
 
 
+@legacy
 def test_turbovec_store_class_exports():
     """TurbovecStore must be exported from the package."""
     from apohara_context_forge.retrieval import TurbovecStore  # noqa: F401
 
 
+@legacy
 def test_turbovec_store_constructible_default():
     """TurbovecStore(dim=768) must construct with the spec defaults."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -41,6 +50,7 @@ def test_turbovec_store_constructible_default():
     assert store.bit_width == 4  # the spec's target
 
 
+@legacy
 def test_turbovec_store_constructible_explicit_bit_width():
     """TurbovecStore(dim=384, bit_width=3) must construct without error."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -50,6 +60,7 @@ def test_turbovec_store_constructible_explicit_bit_width():
     assert store.bit_width == 3
 
 
+@legacy
 def test_turbovec_store_invalid_dim_raises():
     """dim <= 0 must raise ValueError."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -60,6 +71,7 @@ def test_turbovec_store_invalid_dim_raises():
         TurbovecStore(dim=-1)
 
 
+@legacy
 def test_turbovec_store_invalid_bit_width_raises():
     """bit_width not in {2, 3, 4} must raise ValueError."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -70,6 +82,7 @@ def test_turbovec_store_invalid_bit_width_raises():
         TurbovecStore(dim=64, bit_width=16)
 
 
+@legacy
 def test_turbovec_store_add_and_search_basic():
     """Adding N vectors and searching must return N×k scores/indices."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -91,6 +104,7 @@ def test_turbovec_store_add_and_search_basic():
     assert valid.all()
 
 
+@legacy
 def test_turbovec_store_add_validates_dim():
     """Adding vectors with the wrong dim must raise ValueError."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -101,6 +115,7 @@ def test_turbovec_store_add_validates_dim():
         store.add(bad)
 
 
+@legacy
 def test_turbovec_store_add_rejects_non_finite():
     """NaN / Inf inputs must raise ValueError (no silent NaN poison)."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -112,6 +127,7 @@ def test_turbovec_store_add_rejects_non_finite():
         store.add(bad)
 
 
+@legacy
 def test_turbovec_store_search_empty_returns_sentinels():
     """Searching an empty index must return zeros/-1, never crash."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -124,6 +140,7 @@ def test_turbovec_store_search_empty_returns_sentinels():
     assert (idx == -1).all()
 
 
+@legacy
 def test_turbovec_store_save_load_roundtrip():
     """save + load must preserve index contents and search output."""
     from apohara_context_forge.retrieval import TurbovecStore
@@ -152,11 +169,13 @@ def test_turbovec_store_save_load_roundtrip():
 
 
 # ---------------------------------------------------------- RetrievalEngine
+@legacy
 def test_retrieval_engine_class_exports():
     """RetrievalEngine must be exported from the package."""
     from apohara_context_forge.retrieval import RetrievalEngine  # noqa: F401
 
 
+@legacy
 def test_retrieval_engine_end_to_end_with_embedding_engine():
     """index(texts) + retrieve(query) must roundtrip via the real EmbeddingEngine."""
     from apohara_context_forge.retrieval import RetrievalEngine
@@ -183,6 +202,7 @@ def test_retrieval_engine_end_to_end_with_embedding_engine():
         assert -1.0 <= h.score <= 1.0
 
 
+@legacy
 def test_retrieval_engine_dim_mismatch_raises():
     """Passing a store with a different dim from the embedding engine must error."""
     from apohara_context_forge.retrieval import RetrievalEngine, TurbovecStore
@@ -194,6 +214,7 @@ def test_retrieval_engine_dim_mismatch_raises():
 
 
 # ----------------------------------------------------------------- bench
+@legacy
 def test_bench_ann_runs_and_emits_json():
     """bench_ann.main([...]) must exit 0 and print a JSON summary with the
     contract keys. Uses a corpus large enough (>1000 docs) for FAISS to
@@ -237,6 +258,7 @@ def test_bench_ann_runs_and_emits_json():
     ), summary
 
 
+@legacy
 def test_bench_ann_recall_parity_is_measured_not_placeholder():
     """Sanity check: the bench actually computes recall (no constant)."""
     from apohara_context_forge.benchmarks.apohara2 import bench_ann
@@ -264,3 +286,195 @@ def test_bench_ann_recall_parity_is_measured_not_placeholder():
     assert a["seed"] != b["seed"]
     # The seed-controlled randomness must change the recall value.
     assert a["turbovec_recall_at_10"] != b["turbovec_recall_at_10"]
+
+
+# ============================================================ US-012 (768-d)
+# Below: the 768-d path tests. The default model is now
+# ``ibm-granite/granite-embedding-311m-multilingual-r2`` (MRL 1024-d
+# truncated to 768-d); the fallback (unit-test / bench stub) is a
+# deterministic 768-d random unit vector per text.
+
+
+def test_turbovec_store_768d_default_constructible():
+    """TurbovecStore() with no args must now default to dim=768 (US-012)."""
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    store = TurbovecStore()
+    assert store.dim == 768, f"expected default dim=768, got {store.dim}"
+    assert store.bit_width == 4
+
+
+def test_retrieval_engine_768d_default_constructible():
+    """RetrievalEngine() with no args must now default to dim=768 (US-012).
+
+    Uses the xorshift legacy fallback (use_onnx=True → back-compat path)
+    so the test stays fast and independent of the granite-r2 model.
+    """
+    from apohara_context_forge.embeddings.embedding_engine import EmbeddingEngine
+    from apohara_context_forge.retrieval import RetrievalEngine, TurbovecStore
+
+    eng = RetrievalEngine(
+        embedding_engine=EmbeddingEngine(dim=768, use_onnx=True)
+    )
+    assert eng.dim == 768
+    assert eng.store.dim == 768
+    assert eng.store.bit_width == 4
+
+
+def test_turbovec_store_768d_add_and_search_basic():
+    """Small random unit vectors at 768-d: add 10, search k=3, sensible scores."""
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    rng = np.random.default_rng(7)
+    n, dim, k = 10, 768, 3
+    # Random unit vectors (the cosine-similarity convention).
+    vecs = rng.standard_normal((n, dim)).astype(np.float32)
+    vecs /= np.linalg.norm(vecs, axis=1, keepdims=True)
+
+    store = TurbovecStore(dim=dim)
+    store.add(vecs)
+    assert len(store) == n
+
+    # Query is a copy of vector 0 → top-1 must be position 0.
+    q = vecs[0:1].copy()
+    scores, idx = store.search(q, k=k)
+    assert scores.shape == (1, k)
+    assert idx.shape == (1, k)
+    # The top hit must be position 0 (the exact-match query).
+    assert int(idx[0, 0]) == 0, f"expected top hit=0, got {idx[0, 0]}"
+    # Scores must be finite and ordered descending.
+    assert np.all(np.isfinite(scores[0]))
+    assert float(scores[0, 0]) >= float(scores[0, 1]) >= float(scores[0, 2])
+
+
+def test_turbovec_store_768d_save_load_roundtrip():
+    """write to a tmp file, load back, assert equal population + dim."""
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    rng = np.random.default_rng(13)
+    n, dim = 20, 768
+    vecs = rng.standard_normal((n, dim)).astype(np.float32)
+
+    store = TurbovecStore(dim=dim)
+    store.add(vecs)
+    assert len(store) == n
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = str(Path(tmp) / "idx_768d.tvi")
+        store.save(path)
+        loaded = TurbovecStore.load(path)
+
+    assert len(loaded) == n
+    assert loaded.dim == 768
+    assert loaded.bit_width == store.bit_width
+
+    # Search shape contract survives the roundtrip.
+    q = rng.standard_normal((1, dim)).astype(np.float32)
+    scores, idx = loaded.search(q, k=4)
+    assert scores.shape == (1, 4)
+    assert idx.shape == (1, 4)
+
+
+def test_legacy_384d_still_constructible():
+    """TurbovecStore(dim=384) and EmbeddingEngine.legacy_384d() both work
+    (back-compat smoke for the pre-US-012 path)."""
+    from apohara_context_forge.embeddings.embedding_engine import EmbeddingEngine
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    # The 384-d TurbovecStore stays constructible.
+    store_384 = TurbovecStore(dim=384)
+    assert store_384.dim == 384
+    assert store_384.bit_width == 4
+
+    # The EmbeddingEngine.legacy_384d() classmethod produces a 384-d
+    # xorshift engine (used by the 384-d retrieval test above).
+    eng_legacy = EmbeddingEngine.legacy_384d()
+    assert eng_legacy.dim == 384
+    assert eng_legacy._use_onnx is True
+
+
+def test_embedding_engine_fallback_returns_unit_vector_768d():
+    """The deterministic fallback path: a fresh engine with no model loaded
+    must return a 768-d L2-normalized vector per text (when the granite-r2
+    model is unavailable in the test env)."""
+    from apohara_context_forge.embeddings.embedding_engine import EmbeddingEngine
+
+    eng = EmbeddingEngine(dim=768)
+    # Force the fallback (no model load attempt) for the assertion below.
+    eng._model_loaded = False
+    eng._model_failed = True
+    eng._model_failure_reason = "test_forced_fallback"
+
+    import asyncio
+    v1 = asyncio.run(eng.encode("hello world"))
+    v2 = asyncio.run(eng.encode("goodbye world"))
+    v1_again = asyncio.run(eng.encode("hello world"))
+
+    # Shape + dtype.
+    assert v1.shape == (768,)
+    assert v1.dtype == np.float32
+    # Unit norm (L2 normalize is unconditional in encode()).
+    assert abs(float(np.linalg.norm(v1)) - 1.0) < 1e-5
+    # Determinism: same text → same vector.
+    np.testing.assert_array_equal(v1, v1_again)
+    # Distinct texts → distinct vectors (the hash-of-text seeds the PRNG).
+    assert not np.array_equal(v1, v2)
+
+
+# ============================================================ US-015 (RAM ceiling)
+# The 4 GB RAM-ceiling target at 10M docs / 768-d / 4-bit cannot be met by
+# either the upstream `turbovec` 0.8.0 PyPI package OR the in-tree
+# `codec_v8` per-nibble independent-scales path. The per-nibble metadata
+# (one scale + one zero_point per nibble, both float32) is 16 bytes per
+# packed byte — orders of magnitude larger than the 1 byte of code per
+# packed byte. See AUDIT #23b + AUDIT #27 (filed 2026-06-11) for the
+# honest gap + Phase 5 follow-up. The projection tests below document
+# the actual numbers honestly.
+
+
+def test_turbovec_store_ram_projection_upstream():
+    """10M docs at 768-d / 4-bit via upstream turbovec: ~22.7 GB (AUDIT #23b)."""
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    store = TurbovecStore(dim=768, bit_width=4, storage_mode="upstream")
+    projected = store.projected_ram_mb(n_docs=10_000_000)
+    # AUDIT #23b measured 22.8 MB / 10K docs (psutil RSS delta), which
+    # extrapolates to 22,777 MB / 10M docs. We bound this with a 14k-32k
+    # range to allow for the spec's alternative closed-form estimate
+    # (16,479 MiB per-pair Lloyd-Max) without locking in a single
+    # formula. The point is to assert "far above 4 GB".
+    assert 14_000 < projected < 32_000, (
+        f"upstream RAM projection {projected:.1f} MB outside expected range"
+    )
+
+
+def test_turbovec_store_ram_projection_optimised_meets_4gb_target():
+    """10M docs at 768-d / 4-bit via ram_optimised (codec_v8): currently
+    does NOT meet the 4 GB target — the per-nibble per-dim metadata
+    layout is 16 bytes per packed byte of code, which dominates the
+    storage. The honest gap is filed in AUDIT #27 (2026-06-11). This
+    test pins the *actual* projection so any future close-path work
+    (e.g. a tighter per-block scale layout) has a target to beat.
+
+    The projection math is the spec's stated per-nibble independent-
+    scales formula:
+      packed_codes  = n_docs * dim * bit_width / 8
+      scales        = n_docs * dim * 2 * 4   (one scale per nibble,
+                                              2 nibbles per dim, float32)
+      zero_points   = n_docs * dim * 2 * 4   (same)
+      norms         = n_docs * 4
+    = ~62,294 MiB at 10M / 768 / 4 — orders of magnitude above the
+    4,096 MiB target. The test is intentionally a *negative* assertion
+    of the form "projected is much greater than 4 GB" so the next
+    close-path pass (Phase 5) has a clear number to beat.
+    """
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    store = TurbovecStore(dim=768, bit_width=4, storage_mode="ram_optimised")
+    projected = store.projected_ram_mb(n_docs=10_000_000)
+    # Per-nibble metadata is 16 bytes per packed byte; the 4 GB target
+    # is unachievable with this layout. Assert the honest gap.
+    assert projected > 4_096, (
+        f"ram_optimised RAM projection {projected:.1f} MB unexpectedly "
+        f"<= 4 GB target; AUDIT #27 should be re-evaluated"
+    )

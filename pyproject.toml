@@ -122,4 +122,5 @@ testpaths = ["tests"]
 markers = [
   "smoke: real-model smoke tests (downloads weights on first run); requires [serve] extra",
   "heavy: tests that require [serve] extra (torch, vllm, etc.)",
+  "legacy: back-compat tests for the pre-US-012 384-d path (kept green as smoke)",
 ]

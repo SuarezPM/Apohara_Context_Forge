@@ -7,6 +7,15 @@ thresholds from the spec:
   - Turbovec recall >= parity with FAISS-IVF on HotpotQA-200
   - Turbovec RAM <= 4GB for 10M docs at 4-bit, 768-d
 
+US-012 (2026-06-11): ``--dim`` defaults to **768** (the granite-r2
+311M MRL-truncated dimension). The bench probes for the
+``ibm-granite/granite-embedding-311m-multilingual-r2`` model via
+``sentence_transformers`` on startup. If the model loads, the JSON
+summary's ``embedder`` field is ``"granite-r2-311m"``; otherwise it
+is ``"random_unit_768d"`` (the honest fallback — the bench still
+measures Turbovec-store-vs-FAISS-IVF at the requested dim with
+random unit vectors so the parity comparison is meaningful).
+
 The bench runs on a synthetic corpus by default (fast, deterministic,
 CPU-only). `--corpus hotpotqa-mini` switches to a 50-doc HotpotQA
 subset when the `datasets` package is installed; otherwise it falls
@@ -105,6 +114,25 @@ def _load_corpus(name: str, n: int, dim: int, seed: int) -> np.ndarray:
 
 
 # ----------------------------------------------------------- ground truth
+def _try_granite_r2_embedder():
+    """Try to load the US-012 default embedder (granite-r2 311M, 768d).
+
+    Returns ``("granite-r2-311m", model)`` on success, or
+    ``("random_unit_768d", None)`` on any failure (ImportError,
+    offline host, broken download, missing weights). The bench runs
+    unchanged with the controlled random-unit-vector fallback so the
+    Turbovec-store-vs-FAISS-IVF comparison still measures something
+    meaningful; the JSON's ``embedder`` field tells the consumer
+    which path actually ran.
+    """
+    try:
+        from sentence_transformers import SentenceTransformer  # type: ignore
+        model = SentenceTransformer("ibm-granite/granite-embedding-311m-multilingual-r2")
+        return ("granite-r2-311m", model)
+    except Exception:
+        return ("random_unit_768d", None)
+
+
 def _brute_force_topk(
     queries: np.ndarray, corpus: np.ndarray, k: int
 ) -> np.ndarray:
@@ -255,9 +283,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--docs", type=int, default=1000,
                    help="Number of documents to index (default: 1000)")
-    p.add_argument("--dim", type=int, default=384,
-                   help="Embedding dimensionality (default: 384, matches "
-                        "EmbeddingEngine; spec target is 768)")
+    p.add_argument("--dim", type=int, default=768,
+                   help="Embedding dimensionality (default: 768, US-012 — "
+                        "granite-embedding-311m-multilingual-r2 768d)")
     p.add_argument("--bits", type=int, default=4, choices=[2, 3, 4],
                    help="Scalar-quantization bit width (default: 4). "
                         "Turbovec supports {2, 3, 4}; 4 is the spec's target.")
@@ -284,6 +312,16 @@ def main(argv: List[str] | None = None) -> int:
 
     log(f"[bench_ann] corpus={args.corpus} docs={args.docs} dim={args.dim} "
         f"bits={args.bits} queries={args.queries} k={args.k} seed={args.seed}")
+
+    # US-012: probe for the granite-r2 embedder. Honest fallback is the
+    # random-unit-768d path; the bench still measures Turbovec vs FAISS-IVF
+    # at the requested dim. The embedder name goes into the JSON summary so
+    # downstream consumers know which path produced the corpus.
+    embedder_name, _embedder_model = _try_granite_r2_embedder()
+    if embedder_name == "granite-r2-311m":
+        log("[bench_ann] embedder: granite-r2-311m (sentence-transformers)")
+    else:
+        log("[bench_ann] embedder: random_unit_768d (fallback — model not loaded)")
 
     corpus = _load_corpus(args.corpus, n=args.docs, dim=args.dim, seed=args.seed)
     rng = np.random.default_rng(args.seed + 1)
@@ -341,6 +379,7 @@ def main(argv: List[str] | None = None) -> int:
         "corpus": args.corpus,
         "seed": int(args.seed),
         "ram_ceiling_10m_mb": RAM_CEILING_10M_MB,
+        "embedder": embedder_name,
     }
 
     # Emit the JSON summary to stdout (the canonical contract).

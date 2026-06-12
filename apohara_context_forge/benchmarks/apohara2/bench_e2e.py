@@ -90,9 +90,12 @@ from typing import Iterable, List, Sequence
 import numpy as np
 
 from apohara_context_forge.benchmarks.apohara2._bank_test_helpers import (
+    DownstreamLM,
     downstream_lm_stub,
     holm_bonferroni,
     paired_ttest_pvalue,
+    resolve_downstream_lm_id,
+    score_answer,
     synthetic_batch,
 )
 
@@ -110,6 +113,16 @@ SYNTHETIC_BANNER = (
     "synthetic mode: PyTorch/vLLM not installed; downstream LM is a "
     "constant-string stub; KV cache round-trip measured on CPU; "
     "pivots to H100/MI300X for real-mode end-to-end."
+)
+
+# Honest scope banner: emitted at startup for the real-mode A/B
+# (US-014-REDUX). The bench runs a transformers-based downstream
+# LM (Qwen3-1.7B or Qwen2.5-0.5B-Instruct) in FP16 on the local
+# GPU (RTX 2060 SUPER 8GB). No vLLM, no AWQ, no frontier model.
+REAL_MODE_AB_BANNER = (
+    "real-mode with {model_name} on RTX 2060 SUPER 8GB; "
+    "downstream-LM-agnosticism A/B vs Qwen2.5-0.5B-Instruct; "
+    "no vLLM, no torch.bfloat16 quantization (FP16 fits within 8GB for both models)"
 )
 
 # Pivot banner: the TurboQuant-KV path requires Ampere+; the local
@@ -191,6 +204,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--quiet",
         action="store_true",
         help="Suppress progress logs; print only the JSON summary.",
+    )
+    p.add_argument(
+        "--downstream_lm",
+        default="qwen3-1.7b",
+        choices=["qwen3-1.7b", "qwen2.5-0.5b", "stub", "none"],
+        help=(
+            "Downstream LM for the answer_quality metric (default: "
+            "qwen3-1.7b). 'qwen3-1.7b' and 'qwen2.5-0.5b' load a "
+            "transformers-based FP16 model from the local HuggingFace "
+            "cache (both fit in 8GB). 'stub' keeps the constant-string "
+            "stub (synthetic mode). 'none' skips answer_quality "
+            "entirely; the other 3 metrics (compression_ratio, "
+            "kv_round_trip_mse, recall_at_3) are still reported."
+        ),
     )
     return p
 
@@ -334,6 +361,8 @@ def _run_one_seed(
     n_questions: int,
     n_ctx_tokens: int,
     log,
+    downstream_lm: DownstreamLM | None = None,
+    downstream_lm_choice: str = "stub",
 ) -> SeedResult:
     """Run the full stack for one (task, seed)."""
     log(f"[bench_e2e] task={task} seed={seed} ... start")
@@ -370,18 +399,39 @@ def _run_one_seed(
     mse, _ = _kv_round_trip_mse(seed)
 
     # 4. Answer quality: feed each question+context through the
-    # stub LM and compare to the expected answer.
+    # downstream LM (real or stub) and score against the
+    # expected answer.
     correct = 0
+    scored = 0
     for item in batch:
         prompt = f"Q: {item['question']}\nC: {item['context'][:50]}"
-        # The stub uses the prompt hash; the expected answer is
-        # content-derived, so they are deterministic but not
-        # equal by construction. The bench records a 0.0 score
-        # and reports it honestly — the stub is the gap.
-        ans = downstream_lm_stub(prompt)
-        if ans == item["expected_answer"]:
+        if downstream_lm_choice == "none":
+            # Skip answer_quality entirely; preserve the 0.0 /
+            # 1.0 invariant for downstream consumers (the field
+            # is reported as 0.0 in the JSON summary).
+            continue
+        if downstream_lm is not None and downstream_lm_choice != "stub":
+            try:
+                ans = downstream_lm.generate(prompt, max_new_tokens=128)
+            except Exception as exc:  # generation failure: 0.0 honestly
+                log(
+                    f"[bench_e2e] task={task} seed={seed} "
+                    f"downstream LM generate() raised: {exc}"
+                )
+                ans = ""
+        else:
+            # The stub uses the prompt hash; the expected answer
+            # is content-derived, so they are deterministic but
+            # not equal by construction. The bench records a 0.0
+            # score and reports it honestly — the stub is the gap.
+            ans = downstream_lm_stub(prompt)
+        if score_answer(ans, item["expected_answer"], task=task) >= 1.0:
             correct += 1
-    answer_quality = float(correct) / max(len(batch), 1)
+        scored += 1
+    if downstream_lm_choice == "none":
+        answer_quality = 0.0
+    else:
+        answer_quality = float(correct) / max(scored, 1)
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     log(f"[bench_e2e] task={task} seed={seed} ... done in {elapsed_ms:.1f} ms "
@@ -514,22 +564,41 @@ def run_bench(args) -> dict:
                 "Use --mode synthetic for the slim venv."
             )
 
+    # Resolve the downstream LM. For "stub" / "none" we do NOT
+    # instantiate DownstreamLM; the bench stays dependency-light
+    # on torch / transformers. For the real-LM aliases, we
+    # instantiate lazily — the actual model load is deferred
+    # until the first generate() call (the bench's first
+    # question).
+    downstream_lm: DownstreamLM | None = None
+    if args.downstream_lm in ("qwen3-1.7b", "qwen2.5-0.5b"):
+        model_id = resolve_downstream_lm_id(args.downstream_lm)
+        downstream_lm = DownstreamLM(model_id=model_id, device="auto")
+        log(REAL_MODE_AB_BANNER.format(model_name=model_id))
+
     per_task: dict[str, dict] = {}
     raw_pvalues: list[float] = []
-    for task in PINNED_TASKS:
-        results = [
-            _run_one_seed(
-                task=task,
-                seed=seed,
-                n_questions=args.n_questions,
-                n_ctx_tokens=args.n_ctx_tokens,
-                log=log,
-            )
-            for seed in seeds
-        ]
-        agg = _aggregate(task, results)
-        per_task[task] = agg
-        raw_pvalues.append(agg["p_value_vs_uncompressed"])
+    try:
+        for task in PINNED_TASKS:
+            results = [
+                _run_one_seed(
+                    task=task,
+                    seed=seed,
+                    n_questions=args.n_questions,
+                    n_ctx_tokens=args.n_ctx_tokens,
+                    log=log,
+                    downstream_lm=downstream_lm,
+                    downstream_lm_choice=args.downstream_lm,
+                )
+                for seed in seeds
+            ]
+            agg = _aggregate(task, results)
+            per_task[task] = agg
+            raw_pvalues.append(agg["p_value_vs_uncompressed"])
+    finally:
+        # Always release the model (even on Ctrl-C / exception).
+        if downstream_lm is not None:
+            downstream_lm.release()
 
     rejected, adjusted = _apply_correction(raw_pvalues, args.correction)
     for i, task in enumerate(PINNED_TASKS):
@@ -541,6 +610,19 @@ def run_bench(args) -> dict:
     if args.hardware in ("cpu", "rtx2060s"):
         pivots_required = ["h100", "mi300x"]
 
+    # Honest scope banner: real-LM modes get the A/B banner; stub
+    # and none get the synthetic / skip banner.
+    if args.downstream_lm in ("qwen3-1.7b", "qwen2.5-0.5b"):
+        model_id = resolve_downstream_lm_id(args.downstream_lm)
+        scope_banner = REAL_MODE_AB_BANNER.format(model_name=model_id)
+    elif args.downstream_lm == "none":
+        scope_banner = (
+            "downstream_lm=none: answer_quality metric skipped; "
+            "compression_ratio, kv_round_trip_mse, recall_at_3 still reported."
+        )
+    else:
+        scope_banner = SYNTHETIC_BANNER
+
     summary = {
         "mode": args.mode,
         "hardware": args.hardware,
@@ -548,10 +630,13 @@ def run_bench(args) -> dict:
         "correction": args.correction,
         "n_questions": args.n_questions,
         "n_ctx_tokens": args.n_ctx_tokens,
+        "downstream_lm": args.downstream_lm,
+        "n_tasks": len(PINNED_TASKS),
+        "n_seeds": len(seeds),
         "per_task": per_task,
         "family_wise_pass": family_wise_pass,
         "pivots_required": pivots_required,
-        "scope_banner": SYNTHETIC_BANNER if args.mode == "synthetic" else None,
+        "scope_banner": scope_banner,
     }
     return summary
 

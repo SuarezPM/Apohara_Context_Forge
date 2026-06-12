@@ -1,105 +1,111 @@
 """M3 LLM-as-judge client for the Apohara 2.0 bench.
 
 Pinned to greedy decoding (temperature=0, top_p=1.0, top_k=1) to kill
-non-determinism in the 5-seed bank test. The version pin is a TODO
-placeholder until the M3 model is registered on the local provider.
-
-US-005 (Phase 3, Step 3.2). The HTTP call is a deterministic stub for
-this milestone; the real call lands when the M3 provider is wired.
-The stub is honest about its stub-ness: `raw` echoes the first
-100 characters of the prompt and `score` is always 0.0.
+non-determinism in the 5-seed bank test. Wire-up to a real M3 endpoint
+via the M3_BASE_URL env var. When the endpoint is unreachable, the
+judge returns a JudgeResult with score=None and raw='<error: ...>'
+so the bench's deterministic local judge can take over.
 """
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # Version pin (placeholder — see docs/research/reconcile/apohara2-prereg.md).
-# Updated when the M3 model is registered on the local provider.
 M3_VERSION: str = "MiniMax-M3-2026-05-XX"
 M3_TEMPERATURE: float = 0.0
 M3_TOP_P: float = 1.0
 M3_TOP_K: int = 1
 
+# Default endpoint (Pablo's local M3 serve). Overridable via env var.
+M3_DEFAULT_BASE_URL: str = "http://localhost:8000"
 
 @dataclass(frozen=True)
 class JudgeResult:
-    """A single M3 judge call.
-
-    Fields:
-        score: float 0.0-1.0 (or whatever the prompt asks for).
-        raw: raw judge output string.
-        prompt_tokens: int — best-effort token count for the prompt.
-        completion_tokens: int — best-effort token count for the
-            completion; 0 in the stub.
-    """
-    score: float
-    raw: str
-    prompt_tokens: int
-    completion_tokens: int
+    score: Optional[float]          # 0.0-1.0 (or whatever the prompt asks for); None on error
+    raw: str                        # raw judge output, or '<error: M3 unreachable>' on failure
+    prompt_tokens: int              # 0 on error
+    completion_tokens: int          # 0 on error
+    degraded: bool = False           # True if the call fell back to the deterministic envelope
 
 
 class M3Judge:
-    """Greedy-decoding M3 LLM-as-judge client.
-
-    Args:
-        model_id: model identifier. Defaults to `M3_VERSION`; can be
-            overridden via the `M3_MODEL_ID` env var.
-        base_url: provider base URL. Defaults to `http://localhost:8000`;
-            can be overridden via `M3_BASE_URL`.
-
-    The real HTTP call is deferred. The current `judge()` returns a
-    deterministic stub so the bench and tests can wire against a real
-    client surface without an active provider. When the M3 client is
-    wired, the body of `judge()` will issue a request with
-    `temperature=M3_TEMPERATURE, top_p=M3_TOP_P, top_k=M3_TOP_K` and
-    parse the response into a `JudgeResult`.
-    """
-
-    def __init__(
-        self,
-        model_id: str | None = None,
-        base_url: str | None = None,
-    ):
+    def __init__(self, model_id: Optional[str] = None, base_url: Optional[str] = None,
+                 timeout_sec: float = 30.0):
         self.model_id = model_id or os.environ.get("M3_MODEL_ID", M3_VERSION)
-        self.base_url = base_url or os.environ.get("M3_BASE_URL", "http://localhost:8000")
-        # Lazy import: do not require `openai` at module-load time.
+        self.base_url = base_url or os.environ.get("M3_BASE_URL", M3_DEFAULT_BASE_URL)
+        self.timeout_sec = timeout_sec
+        # Lazy import: do not require `httpx` at module-load time (slim venv may not have it).
+        self._httpx = None
 
-    def judge(
-        self,
-        prompt: str,
-        system: str = "You are a strict evaluator.",
-    ) -> JudgeResult:
-        """Issue a judge call.
+    def _get_httpx(self):
+        if self._httpx is None:
+            import httpx
+            self._httpx = httpx
+        return self._httpx
 
-        Greedy decoding is enforced by the module-level constants.
-        The stub returns `score=0.0` and a `raw` string that echoes
-        the first 100 chars of the prompt. The token counts are
-        best-effort whitespace splits; the real implementation will
-        use the provider's `usage` field.
-
-        Raises:
-            RuntimeError: if the underlying client (when wired) does
-                not honor `temperature=0`. This is enforced to keep
-                the 5-seed bank test deterministic.
+    def judge(self, prompt: str, system: str = "You are a strict evaluator.") -> JudgeResult:
+        """Call M3 via the OpenAI-compatible /v1/chat/completions endpoint.
+        Returns a JudgeResult. If M3 is unreachable, returns score=None and
+        raw='<error: M3 unreachable: ...>' with degraded=True (the bench's
+        deterministic local judge takes over).
         """
-        if M3_TEMPERATURE != 0.0 or M3_TOP_P != 1.0 or M3_TOP_K != 1:
-            # Defensive guard: if the constants ever drift, the bench
-            # breaks the determinism contract loudly.
-            raise RuntimeError(
-                "M3 judge sampling params drifted from greedy decoding. "
-                "Re-pin temperature/top_p/top_k to 0/1.0/1 before any "
-                "5-seed bench run."
+        # Greedy decoding pins: these are non-negotiable.
+        body = {
+            "model": self.model_id,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": M3_TEMPERATURE,
+            "top_p": M3_TOP_P,
+            "top_k": M3_TOP_K,
+        }
+        url = f"{self.base_url.rstrip('/')}/v1/chat/completions"
+        try:
+            httpx = self._get_httpx()
+            resp = httpx.post(url, json=body, timeout=self.timeout_sec)
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            usage = data.get("usage", {})
+            # The score is whatever the M3 prompt asks for. We don't
+            # parse it here — the bench does. We just pass the raw content
+            # and the usage tokens. The M3 prompt template in
+            # bench_compress.py asks for a float in [0, 1] on the first
+            # line.
+            score = self._parse_score(content)
+            return JudgeResult(
+                score=score,
+                raw=content,
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                degraded=False,
+            )
+        except Exception as e:
+            logger.warning(f"M3 judge unreachable at {url}: {e}")
+            return JudgeResult(
+                score=None,
+                raw=f"<error: M3 unreachable: {type(e).__name__}: {str(e)[:100]}>",
+                prompt_tokens=0,
+                completion_tokens=0,
+                degraded=True,
             )
 
-        # Honest stub. The real call lands when the M3 provider is
-        # wired. The token counts use whitespace splits as a
-        # best-effort stand-in.
-        prompt_tokens = len(prompt.split())
-        raw = f"M3 judge stub: {prompt[:100]}"
-        return JudgeResult(
-            score=0.0,
-            raw=raw,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=0,
-        )
+    @staticmethod
+    def _parse_score(content: str) -> Optional[float]:
+        """Parse the M3 judge's first-line score. The prompt template
+        asks for a float in [0, 1] on the first line. Returns None if
+        parsing fails (the bench falls back to a deterministic score).
+        """
+        if not content:
+            return None
+        first_line = content.strip().splitlines()[0].strip()
+        try:
+            return float(first_line)
+        except (ValueError, IndexError):
+            return None

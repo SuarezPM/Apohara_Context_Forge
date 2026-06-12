@@ -195,6 +195,8 @@ def test_bench_e2e_runs_and_emits_json():
             "apohara_context_forge.benchmarks.apohara2.bench_e2e",
             "--mode",
             "synthetic",
+            "--downstream_lm",
+            "stub",
             "--seeds",
             "0,1",
             "--correction",
@@ -221,6 +223,11 @@ def test_bench_e2e_runs_and_emits_json():
     assert summary["seeds"] == [0, 1]
     assert summary["correction"] == "holm-bonferroni"
     assert summary["mode"] == "synthetic"
+    # US-014-REDUX: the bench now reports the downstream LM choice
+    # and the task / seed counts in the top-level summary.
+    assert summary["downstream_lm"] == "stub"
+    assert summary["n_tasks"] == 5
+    assert summary["n_seeds"] == 2
     # The per-task rows have the contract keys.
     for task, row in summary["per_task"].items():
         for key in (

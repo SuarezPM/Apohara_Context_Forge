@@ -48,14 +48,14 @@ class RetrievalHit:
 class RetrievalEngine:
     """Combine an `EmbeddingEngine` with a `TurbovecStore`.
 
-    Phase 2 wires the Turbovec index with the **existing 384-d
-    EmbeddingEngine** (the all-MiniLM-L6-v2 default, falling back to
-    xorshift pseudo-embeddings when qwen3-embed is unavailable). The
-    spec wants granite-embedding-311m-multilingual-r2 (768-d) — that
-    migration is tracked as a follow-up in
-    `.omc/plans/apohara-2-0.md` (Phase 2.x — embedding model swap). The
-    index defaults to `dim=768` so the eventual migration is a
-    constructor-arg change, not a code change.
+    US-012 (2026-06-11): the engine now defaults to **768-d** to match
+    the new default model — ``ibm-granite/granite-embedding-311m-
+    multilingual-r2`` (MRL 1024-d truncated to 768-d) loaded by the
+    EmbeddingEngine. Phase 2 shipped with the all-MiniLM-L6-v2 384-d
+    default; US-012 migrated to granite-r2 768d for higher recall on
+    long-context retrieval (MTEB-Multilingual 65.2 vs MiniLM's
+    ~58). The 384-d path stays reachable via
+    ``RetrievalEngine(dim=384)`` for the legacy back-compat tests.
 
     The engine is a thin, sync wrapper around the async
     `EmbeddingEngine.encode` so callers (bench scripts, tests, MCP
@@ -76,9 +76,9 @@ class RetrievalEngine:
                 EmbeddingEngine,
             )
 
-            # Honor the constructor dim when provided; default 384 matches
-            # the existing EmbeddingEngine default.
-            embedding_engine = EmbeddingEngine(dim=dim or 384, use_onnx=False)
+            # Honor the constructor dim when provided; default 768 matches
+            # the US-012 EmbeddingEngine default (granite-r2 768d).
+            embedding_engine = EmbeddingEngine(dim=dim or 768, use_onnx=False)
 
         if dim is None:
             dim = embedding_engine.dim

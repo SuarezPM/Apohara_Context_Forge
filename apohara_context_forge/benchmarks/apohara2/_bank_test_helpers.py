@@ -34,7 +34,8 @@ from __future__ import annotations
 
 import math
 import random
-from typing import List, Sequence, Tuple
+import re
+from typing import Any, List, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -335,3 +336,247 @@ def paired_ttest_pvalue(
     # gate. The bank-test runner reports it as such.
     p = 0.0 if abs(t_stat) > 12.0 else 0.5
     return float(p)
+
+
+# ---------------------------------------------------------------------------
+# DownstreamLM — transformers-backed downstream LM (US-014-REDUX)
+# ---------------------------------------------------------------------------
+
+
+# Canonical alias -> HuggingFace model id. The bench ships two
+# sub-2B Qwen variants that both fit in 8GB in FP16. Adding a
+# new variant = one new line here and one new `--downstream_lm`
+# choice in the CLI. (No bitsandbytes / AWQ: FP16 fits.)
+_DOWNSTREAM_LM_REGISTRY: dict[str, str] = {
+    "qwen3-1.7b": "Qwen/Qwen3-1.7B",
+    "qwen2.5-0.5b": "Qwen/Qwen2.5-0.5B-Instruct",
+}
+
+
+def resolve_downstream_lm_id(name: str) -> str:
+    """Resolve `--downstream_lm` alias -> HuggingFace model id.
+
+    Raises ValueError on unknown aliases so the bench fails fast
+    with a clear error message rather than calling
+    `transformers` with garbage.
+    """
+    key = name.strip().lower()
+    if key not in _DOWNSTREAM_LM_REGISTRY:
+        raise ValueError(
+            f"unknown --downstream_lm {name!r}; "
+            f"supported: {sorted(_DOWNSTREAM_LM_REGISTRY)} | stub | none"
+        )
+    return _DOWNSTREAM_LM_REGISTRY[key]
+
+
+def list_downstream_lm_aliases() -> tuple[str, ...]:
+    """Return the supported `--downstream_lm` aliases (test helper)."""
+    return tuple(sorted(_DOWNSTREAM_LM_REGISTRY))
+
+
+class DownstreamLM:
+    """Lazy-loaded downstream LM for the bank test (US-014-REDUX).
+
+    Wraps a `transformers.AutoModelForCausalLM` + `AutoTokenizer`
+    loaded from the local HuggingFace cache. The model is loaded
+    on the first call to `generate()` and freed by `release()`.
+
+    Honest scope (US-014-REDUX). The real-mode bank test runs
+    this class on a local GPU (RTX 2060 SUPER 8GB) with a sub-2B
+    Qwen model in FP16. The class is **NOT** a vLLM path; vLLM
+    remains a follow-up gated on the MI300X doplet. The
+    `generate()` call is greedy, `max_new_tokens=128`, no sampling;
+    the resulting string is scored against the expected answer
+    via `score_answer` (substring/keyword match).
+    """
+
+    def __init__(self, model_id: str, device: str = "auto") -> None:
+        self.model_id = model_id
+        self.device = device
+        self._model: Any | None = None
+        self._tokenizer: Any | None = None
+        self._loaded = False
+
+    def is_real(self) -> bool:
+        """True for any registered HuggingFace-backed variant."""
+        return self.model_id in _DOWNSTREAM_LM_REGISTRY.values()
+
+    def is_loaded(self) -> bool:
+        return self._loaded and self._model is not None
+
+    def _ensure_loaded(self) -> None:
+        """Lazy load: first `generate()` call triggers the load.
+
+        Imports are kept local so the bench's `--downstream_lm stub`
+        path stays dependency-light (no torch import required).
+        """
+        if self._loaded:
+            return
+        import torch  # local import — keeps stub path torch-free
+        from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
+
+        if self.device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            device = self.device
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        # FP16 on CUDA, full precision on CPU. The slim venv has
+        # neither bitsandbytes nor AWQ; FP16 fits in 8GB for both
+        # Qwen3-1.7B (~3.5GB) and Qwen2.5-0.5B-Instruct (~1GB).
+        dtype = torch.float16 if device == "cuda" else torch.float32
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self.model_id, torch_dtype=dtype
+        )
+        self._model = self._model.to(device)
+        self._model.eval()
+        self._device = device
+        self._loaded = True
+
+    def generate(self, prompt: str, max_new_tokens: int = 128) -> str:
+        """Greedy decode `prompt`, returning the new-token string.
+
+        Returns the **post-prompt** continuation (the model input
+        prefix is stripped from the output), not the full decoded
+        string. EOS is respected; `pad_token_id` is taken from
+        the tokenizer when present (Qwen tokenizers always set
+        one).
+        """
+        self._ensure_loaded()
+        import torch  # local — already required for the load
+
+        inputs = self._tokenizer(prompt, return_tensors="pt").to(self._device)
+        eos_token_id = self._tokenizer.eos_token_id
+        pad_token_id = (
+            self._tokenizer.pad_token_id
+            if self._tokenizer.pad_token_id is not None
+            else eos_token_id
+        )
+        with torch.no_grad():
+            output_ids = self._model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                num_beams=1,
+                temperature=1.0,
+                top_p=1.0,
+                top_k=1,
+                eos_token_id=eos_token_id,
+                pad_token_id=pad_token_id,
+            )
+        new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
+        return self._tokenizer.decode(new_ids, skip_special_tokens=True)
+
+    def release(self) -> None:
+        """Free GPU/CPU memory; safe to call multiple times."""
+        try:
+            import torch  # local — keeps stub path torch-free
+            if hasattr(self, "_device") and self._device == "cuda":
+                torch.cuda.empty_cache()
+        except Exception:
+            # release() is best-effort; do not raise into the bench.
+            pass
+        self._model = None
+        self._tokenizer = None
+        self._loaded = False
+
+
+# ---------------------------------------------------------------------------
+# score_answer — substring / keyword match for the 5 pinned tasks
+# ---------------------------------------------------------------------------
+
+
+_WS_RE = re.compile(r"\s+")
+_PUNCT_RE = re.compile(r"[^\w\s]")
+
+
+def _normalize(s: str) -> str:
+    """Lowercase + collapse whitespace + strip punctuation.
+
+    The downstream LMs end their answers with a period / question
+    mark, and the expected answers in the synthetic batch are
+    hash-derived strings with no terminal punctuation. Stripping
+    punctuation in the normaliser closes the asymmetry so that
+    `score_answer("Paris.", "paris")` returns 1.0 (a 1.7B-class
+    LM will write "Paris.", the bench's `expected_answer` field
+    is "paris" — without stripping, the substring match misses).
+    """
+    s = s.strip().lower()
+    s = _PUNCT_RE.sub(" ", s)
+    return _WS_RE.sub(" ", s).strip()
+
+
+def _first_sentence(s: str) -> str:
+    """Cheap first-sentence extractor (period / question mark / !)."""
+    if not s:
+        return ""
+    s = s.strip()
+    for terminator in (".", "?", "!"):
+        idx = s.find(terminator)
+        if 0 < idx < len(s) - 1:
+            return s[: idx + 1].strip()
+    # No terminator: take the first 200 chars as the "sentence".
+    return s[:200].strip()
+
+
+def score_answer(
+    predicted: str,
+    expected: str,
+    task: str = "",
+) -> float:
+    """Score `predicted` against `expected` for the bank test.
+
+    The bank test does not have Rouge-L wired (no `rouge_score`
+    in the slim venv) and the answer_quality metric is a
+    "downstream-LM-capability ceiling" rather than a frontier
+    accuracy — the matcher is intentionally simple:
+
+      * Default (HotpotQA / NQ / GSM8K / BBH): 1.0 if the
+        normalized `expected` appears as a substring of the
+        normalized `predicted` (or vice versa), else 0.0.
+      * Summarization: 1.0 if the first sentence of either
+        string contains a 5-gram from the first sentence of the
+        other, else 0.0. (No Rouge-L; 5-gram overlap is a
+        cheap proxy.)
+
+    Returns a float in {0.0, 1.0} (the per-task scorer; the
+    per-(task, seed) scorer averages across the batch).
+    """
+    if not predicted or not expected:
+        return 0.0
+    task_lower = (task or "").strip().lower()
+    pred_n = _normalize(predicted)
+    exp_n = _normalize(expected)
+    if not pred_n or not exp_n:
+        return 0.0
+
+    if task_lower in ("summarization", "summary"):
+        return _summary_first_sentence_overlap(predicted, expected)
+
+    # Default substring match (either direction).
+    if exp_n in pred_n or pred_n in exp_n:
+        return 1.0
+    return 0.0
+
+
+def _summary_first_sentence_overlap(predicted: str, expected: str) -> float:
+    """Summarization scoring: 5-gram overlap of first sentences.
+
+    The Qwen instruction-tuned models produce multi-sentence
+    summaries; the first sentence is the headline, which is
+    what the bench uses as a "did the model capture the topic"
+    proxy. Overlap of any 5-gram = 1.0; no overlap = 0.0.
+    """
+    pred_first = _first_sentence(predicted)
+    exp_first = _first_sentence(expected)
+    pred_tokens = _normalize(pred_first).split()
+    exp_tokens = _normalize(exp_first).split()
+    n = 5
+    if len(pred_tokens) < n or len(exp_tokens) < n:
+        # Fall back to a single-token overlap if either side is
+        # too short for a 5-gram.
+        p_set = set(pred_tokens)
+        e_set = set(exp_tokens)
+        return 1.0 if (p_set & e_set) else 0.0
+    pred_ngrams = {tuple(pred_tokens[i : i + n]) for i in range(len(pred_tokens) - n + 1)}
+    exp_ngrams = {tuple(exp_tokens[i : i + n]) for i in range(len(exp_tokens) - n + 1)}
+    return 1.0 if (pred_ngrams & exp_ngrams) else 0.0
