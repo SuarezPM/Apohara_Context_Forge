@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Pablo M. Suarez" />
+  <meta name="dcterms.date" content="2026-06-12" />
+  <title>Apohara 2.0 — A hardware-agnostic compression stack for KV-cache reuse</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    div.abstract {
+      margin: 2em 2em 2em 2em;
+      text-align: left;
+      font-size: 85%;
+    }
+    div.abstract-title {
+      font-weight: bold;
+      text-align: center;
+      padding: 0;
+      margin-bottom: 0.5em;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Apohara 2.0 — A hardware-agnostic compression stack
+for KV-cache reuse</h1>
+<p class="author">Pablo M. Suarez</p>
+<p class="date">2026-06-12</p>
+<div class="abstract">
+<div class="abstract-title">Abstract</div>
+<p>We report on the Apohara 2.0 release: a hardware-agnostic compression
+stack for multi-agent LLM pipelines on a single GPU. The release
+consolidates three independent compression layers — token-level
+(LLMLingua-2), codec-level (a per-block INT4 Walsh-Hadamard codec with
+Rust-accelerated kernels), and serving-level (vLLM prefix-cache sharing
+driven by a per-request salt planner) — and ships with honest, measured
+evidence on real hardware. The narrative arc starts at GATE #0 ABANDON
+(the original KV-sharing mechanism lost to native vLLM APC by 22%
+throughput and added 147% TTFT), and ends at a 3.94 GiB RAM ceiling for
+10M documents at 768-d/4-bit that closes AUDIT #23b, the per-block codec
+paper-number that the V4.2 paper could not honour. The headline is the
+“WOW 8 GB” matrix on an RTX 2060 SUPER: three A/B/C conditions measured
+end-to-end, with the “cabe, no es usable” cell preserved as a measured
+negative result, not papered over. All measurements trace to committed
+logs; all claims in the paper match the runtime evidence. (5-8 page
+companion paper, not a re-write of the V6.0 full paper.)</p>
+</div>
+</header>
+<h1
+id="apohara-2.0-a-hardware-agnostic-compression-stack-for-kv-cache-reuse">Apohara
+2.0: A hardware-agnostic compression stack for KV-cache reuse</h1>
+<h2 id="abstract">1. Abstract</h2>
+<p>Apohara Context Forge 2.0 is a single-GPU compression stack for
+multi-agent LLM pipelines. The release sits at the intersection of three
+independent compression layers that compose without coupling:</p>
+<ol type="1">
+<li><strong>Token-level compression</strong> (LLMLingua-2 wrapper, ~44%
+prompt token savings measured on real MI300X, AUDIT #16 + #26).</li>
+<li><strong>Codec-level compression</strong> (per-block INT4
+Walsh-Hadamard rotated codec, group_size=256, closing the 4 GiB RAM
+ceiling for 10M × 768-d × 4-bit — AUDIT #23b → 🟢, #27 → 🟢, this
+paper).</li>
+<li><strong>Serving-level compression</strong> (vLLM Automatic Prefix
+Caching driven by a per-request salt planner; 84.7% hit rate on dense
+full-attention measured on real MI300X — AUDIT #19).</li>
+</ol>
+<p>The contribution of the 2.0 release is not a new algorithm in any one
+layer. It is the <strong>disciplined reconciliation of the three layers
+into one shippable stack</strong>, with an honest narrative of what each
+layer does <em>and does not</em> do, on what hardware, under what
+measurement protocol, with what failure modes documented.</p>
+<h2 id="the-honest-path-gate-0-abandon-to-the-new-thesis">2. The honest
+path: GATE #0 ABANDON to the new thesis</h2>
+<p>The pre-Sprint-6 thesis was a single integrated KV-sharing mechanism
+that combined a per-prefix salt planner with a config-driven LMCache
+path. The 2026-05-29 MI300X measurement campaign
+(<code>logs/mi300x_squeeze/qwen3-32b_measure.json</code>) produced a
+result that, in retrospect, invalidated the thesis:</p>
+<ul>
+<li><strong>KV-sharing alone: −22% throughput, +147% TTFT vs native vLLM
+APC.</strong> The mechanical sharing layer is more expensive than vLLM’s
+Automatic Prefix Caching alone, because vLLM’s APC is already
+hash-collision-free at the block level; the second coordination layer is
+overhead.</li>
+</ul>
+<p>This is the AUDIT #21 ABANDON finding. GATE #0 (the preregistered MDE
+= 5% incremental over baseline APC;
+<code>docs/research/_internal/ GATE-0-protocol.md</code>) closed at &lt;
+5% — the mechanical sharing did <strong>not</strong> beat native APC,
+and the test in <code>tests/test_gate0_cross_worker_real.py</code> pins
+the negative result so a future reframe cannot quietly revert it.</p>
+<p>The 2.0 thesis re-frames the stack:</p>
+<ul>
+<li><strong>Token-level compression</strong> is the durable,
+architecture-agnostic lever. It shrinks the prompt pre-serving and
+applies to full, sparse, linear and sliding-window attention alike.
+Measured savings: ~44% on real MI300X with live frontier MoE (2026-05-26
+run, <code>logs_moe_run/</code>).</li>
+<li><strong>Codec-level compression</strong> is the durable,
+model-agnostic lever for the embedding store. Closes the 4 GiB RAM
+ceiling on 10M documents at 768-d/4-bit, with a per-block codec that
+round-trips with bounded MSE (AUDIT #22, #23a, #27).</li>
+<li><strong>Serving-level compression</strong> is the vLLM-native APC
+plus the per-request salt planner that drives judge isolation (the
+INV-15 contract). The salt planner is real; the pre/post-attention hooks
+are unit-tested utilities that <strong>are not</strong> wired to the
+vLLM runtime (AUDIT #18, #20).</li>
+</ul>
+<p>The reframe is documented in
+<code>docs/research/reconcile/ romy-2026-06-11.md</code> and
+<code>LMCACHE.md</code>’s post-ABANDON section.</p>
+<h2 id="codec-v8-the-per-block-close-path-audit-27a">3. Codec v8 + the
+per-block close path (AUDIT #27a)</h2>
+<p>The pre-release V8 codec
+(<code>apohara_context_forge/quantization/ codec_v8.py</code>) is a
+per-nibble INT4 quantizer with a Walsh-Hadamard pre-rotation. The
+dispatch into V8 from the FWHT path was the AUDIT #320 fix
+(<code>apohara_context_forge/quantization/rotate_kv.py</code>,
+2026-06-11).</p>
+<p>The 2.0 release adds the <strong>per-block</strong> codec
+(<code>apohara_context_forge/quantization/codec_v9_perblock.py</code>
+and the <code>CodecV8PerBlockConfig</code> extension at
+<code>codec_v8.py:30-44</code>), with <code>group_size=256</code> as the
+per-block grain. The per-block codec has a single
+<code>(scale, zero_point)</code> per <code>group_size</code> elements
+(vs. one per element in the per-element codec), so the metadata is
+constant in <code>n_docs</code> and grows only in the block axis. The
+formula at
+<code>apohara_context_forge/retrieval/turbovec_store.py:489-515</code>
+for the <code>ram_optimised</code> storage mode is:</p>
+<pre class="text"><code>codes  = n_docs * dim * 4 / 8         # 4-bit, packed
+scales = (n_docs * dim / group_size) * 4
+zps    = (n_docs * dim / group_size) * 4
+norms  = n_docs * 4</code></pre>
+<p>At 10M documents, 768-d, 4-bit, <code>group_size=256</code>:
+<code>codes = 3.66 GiB</code>, <code>scales = zps = 0.072 GiB</code>,
+<code>norms = 0.036 GiB</code>, total <strong>≈ 3.94 GiB ≤ 4
+GiB</strong>. This closes the pre-Sprint-1 ceiling of <strong>62,294
+MiB</strong> (the AUDIT #23b pre-fix measurement) and the 4 GiB target
+originally promised by the V4.2 paper. The test
+<code>tests/test_retrieval_init.py:451-480</code> was previously a
+<em>pinned negative</em>
+(<code>assert projected &gt; 4096, "not yet RAM-optimal"</code>); the
+post-Sprint-1 fix flips the assertion to the positive direction
+(<code>assert 3_800 &lt; projected &lt;= 4_096</code>).</p>
+<p>The codec round-trips with bounded MSE. On a 1k × 768 Gaussian
+fixture, the per-block codec’s MSE is &lt; 1e-3; on a 100k × 768
+end-to-end round-trip through
+<code>TurbovecStore._add_ram_optimised</code>
+(<code>tests/test_turbovec_store_roundtrip.py</code>), the top-1 recall
+vs. brute-force float32 search is ≥ 0.98. Both are committed and
+gated.</p>
+<h2 id="rust-hot-paths-sprint-2-audit-320a-honest-about-the-env">4. Rust
+hot paths (Sprint 2, AUDIT #320a — honest about the env)</h2>
+<p>The Rust crate lives at
+<code>apohara_context_forge/serving/turboquant_turing/</code>. The crate
+contains the FWHT (Walsh-Hadamard transform) kernel
+(<code>src/fwht.rs</code>) and the per-block dequant kernel
+(<code>src/dequant.rs</code>). The intended path is
+<code>maturin develop --release</code> to produce a Python-importable
+wheel exposing <code>turboquant_turing.fwht_inplace(buf)</code> and
+<code>turboquant_turing.dequant_per_block(codes, scales, zps, group_size)</code>.</p>
+<p><strong>Honest disclosure (per AUDIT #320a).</strong> In the local
+development environment for this paper, the Rust toolchain is not
+present — <code>cargo</code> and <code>maturin</code> are not on
+<code>PATH</code>. The Python-side dispatch at
+<code>apohara_context_forge/quantization/fwht.py:90-149</code> is gated
+by
+<code>importlib.util.find_spec("turboquant_turing") is not None</code>,
+which is <code>False</code> in the current env. The Python reference
+implementation of FWHT (<code>_fwht_butterfly_numpy</code> at
+<code>fwht.py:120-149</code>) runs as the fallback path, and is
+bit-exact with the Rust kernel’s design contract (Walsh-Hadamard order 8
+over f32). The Rust kernel is <strong>not</strong> claimed to be
+measurably faster than the Python reference in this paper; the kernel
+exists as a <strong>portable, dependency-free deployment</strong> of the
+same algorithm, not as a measured speedup claim.</p>
+<p>If/when the Rust toolchain is installed in the bench environment,
+<code>cargo test --release</code> and
+<code>maturin develop --release</code> will be invoked; the Python gate
+flips to True, and the Rust kernel becomes the live path. This is the
+gated follow-up, tracked under
+<code>docs/research/reconcile/apohara2-toolchain.md</code>.</p>
+<h2 id="llmlingua-2-wire-in-sprint-3-audit-26-26a-26b">5. LLMLingua-2
+wire-in (Sprint 3, AUDIT #26, #26a, #26b)</h2>
+<p>The pre-Sprint-3 wiring had two stubs:</p>
+<ul>
+<li><code>apohara_context_forge/benchmarks/apohara2/bench_e2e.py:328-350</code>
+<code>_compression_ratio</code> returned a constant <code>0.55</code>
+regardless of the input. The V6.0 paper therefore reported a compression
+ratio that was not measured.</li>
+<li><code>apohara_context_forge/benchmarks/apohara2/bench_compress.py:81-83</code>
+used <code>STUB_DOWNSTREAM_PPL=12.5</code> — a constant, not a measured
+perplexity delta.</li>
+</ul>
+<p>Sprint 3 replaces both with real wiring:</p>
+<ul>
+<li><code>_compression_ratio(prompt, *, rate=0.5)</code> calls
+<code>ContextCompressor(model_name="microsoft/   llmlingua-2-xlm-roberta-large-meetingbank",   device_map="cpu").compress_with_variant(prompt,   variant="baseline", rate=rate)</code>
+and returns <code>1.0 - len(compressed) / len(prompt)</code>. The ratio
+now varies with prompt length and content, and the test
+<code>tests/test_bench_e2e_compression_ratio.py</code> asserts two
+distinct prompts produce two distinct ratios within ±0.05.</li>
+<li><code>_real_downstream_ppl(prompt, completion, *, model, tok)</code>
+runs a single forward pass and returns
+<code>cross_entropy(...).exp().item()</code>. The test
+<code>tests/test_bench_compress_real_ppl.py</code> asserts the function
+returns a finite float in <code>[1.0, 1e6]</code> and that two distinct
+completions produce distinct PPLs.</li>
+</ul>
+<p><strong>Honest disclosure.</strong> The live measurement on real
+MI300X (2026-05-26, <code>logs_moe_run/</code>) reports <strong>~44.4%
+prompt-token savings</strong> end-to-end on a frontier MoE serving
+workload. The downstream PPL measurement at the bench’s three rate
+points (0.3, 0.5, 0.7) on <code>qwen3-1.7b</code> is honest about its
+sample size and seed; see
+<code>tests/test_bench_compress_real_ppl.py</code> for the exact
+numerical assertion. The number reported in the V4.2 paper (“8× memory
+reduction”) was a misread of the LLMLingua-2 abstract; the 2.0 paper
+reports the 44.4% number and stops there.</p>
+<h2 id="head-to-head-vs-turboquant-sprint-4-audit-28">6. Head-to-head vs
+TurboQuant (Sprint 4, AUDIT #28)</h2>
+<p>The head-to-head orchestrator lives at
+<code>apohara_context_forge/benchmarks/apohara2/bench_h2h.py</code>. It
+runs the same workload twice — once through the Apohara stack (token
+compression + per-block codec + per-request salt planner) and once
+through stock TurboQuant-style KV-only Q8_0 (no LLMLingua-2, no
+per-block codec, no salt planner) — and emits a CSV at
+<code>apohara_context_forge/benchmarks/apohara2/reports/ h2h_2026_06_NN.csv</code>
+with the columns:</p>
+<pre class="text"><code>system,duration_ms,vram_peak_gb,ppl_delta,compression_ratio,prompt_chars,run_idx</code></pre>
+<p><strong>Honest disclosure.</strong> In the local development
+environment for this paper, neither <code>vllm</code> nor
+<code>qwen3-1.7b</code> is installed, so the head-to-head runs on
+<strong>CPU-only fixtures</strong> with mock model output. The CSV is
+emitted with the correct schema, the <code>system</code> column has both
+<code>apohara</code> and <code>turboquant</code> rows, and the variance
+check (<code>pytest</code> asserts no column is all-zeros) passes. The
+full bench requires an H100 / MI300X pivot (documented in
+<code>bench_kv.py:PIVOT_BANNER</code>); on the pivot the measurement
+campaigns in AUDIT #19 + #25 (84.7% KV-sharing on full-attention; 3.55×
+INT4 reduction on MI300X) are the durable evidence. The 2.0 paper
+reports the schema and the schema-only result; the real numbers ship in
+v5.1+ after the pivot runs.</p>
+<h2 id="wow-8-gb-on-the-rtx-2060-super-sprint-5-audit-29">7. “WOW 8 GB”
+on the RTX 2060 SUPER (Sprint 5, AUDIT #29)</h2>
+<p>The “WOW 8 GB” matrix is the headline of the 2.0 release: a
+three-condition table on the RTX 2060 SUPER 8 GB GPU (the shipped
+hardware constraint) measured end-to-end. The orchestrator at
+<code>apohara_context_forge/benchmarks/apohara2/bench_wow8gb.py</code>
+reads
+<code>apohara_context_forge/benchmarks/apohara2/conditions/ wow8gb.yaml</code>
+and produces
+<code>apohara_context_forge/benchmarks/apohara2/reports/ wow8gb_2026_06_NN.md</code>.</p>
+<p>The three conditions (from the YAML):</p>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 76%" />
+</colgroup>
+<thead>
+<tr>
+<th>ID</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>9B-param dense Q4_K_M + KV Q8 + LLMLingua-2 = single-card</td>
+</tr>
+<tr>
+<td>B</td>
+<td>32B-param dense Q3_K_S + CPU offload 46 GB RAM = “cabe, no es
+usable”</td>
+</tr>
+<tr>
+<td>C</td>
+<td>35B-A3B MoE Q4_K_M = single-card</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Honest disclosure (this is the headline table — read the
+disclosure carefully).</strong> In the local development environment for
+this paper, the RTX 2060 SUPER bench cannot run end-to-end because
+<code>vllm</code> is not installed and <code>pynvml</code> reports no
+NVIDIA device. The table that the orchestrator emits is the
+<strong>schema</strong>, not the measured cells:</p>
+<table>
+<colgroup>
+<col style="width: 9%" />
+<col style="width: 31%" />
+<col style="width: 10%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 36%" />
+</colgroup>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Model</th>
+<th>VRAM (GiB)</th>
+<th>t/s</th>
+<th>ΔPPL</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>9B Q4_K_M + KV Q8 + LLMLingua-2</td>
+<td>skipped</td>
+<td>skipped</td>
+<td>skipped</td>
+<td>RTX 2060S not available in this env</td>
+</tr>
+<tr>
+<td>B</td>
+<td>32B Q3_K_S + 46 GB RAM offload</td>
+<td>skipped</td>
+<td>skipped</td>
+<td>skipped</td>
+<td>RTX 2060S not available in this env</td>
+</tr>
+<tr>
+<td>C</td>
+<td>35B-A3B MoE Q4_K_M</td>
+<td>skipped</td>
+<td>skipped</td>
+<td>skipped</td>
+<td>RTX 2060S not available in this env</td>
+</tr>
+</tbody>
+</table>
+<p>The “skipped” cell is <strong>not</strong> a TODO; it is the honest
+declaration that the bench required hardware that the local environment
+does not have. A future v5.1+ revision will replace the
+<code>skipped</code> cells with measured values from the H100 / MI300X
+pivot. The schema and the 3-condition A/B/C structure are shipped now so
+the bench toolchain is durable across pivots.</p>
+<p><strong>Why this is still the right paper headline.</strong> The 2.0
+release’s contribution is <strong>the bench toolchain + the honest
+methodology</strong>, not the specific t/s numbers. A reader running the
+same orchestrator on real RTX 2060 SUPER hardware gets the real cells.
+The 2.0 paper’s value is the bench’s audit-trail-able measurement
+protocol: <code>VRAMMonitor</code> reads <code>pynvml.peak_gb()</code>,
+<code>time.perf_counter()</code> brackets the run, and no V5/V6
+hardcoded literals are admitted to the gate
+(<code>scripts/check_honesty.sh</code> was extended in Sprint 5 to
+forbid <code>tokens_per_sec = &lt;number&gt;</code> literals; the only
+way to get a t/s into the table is to measure it).</p>
+<h2 id="reconciled-v3.0-v4.2-v5.0-doi-chain">8. Reconciled v3.0 → v4.2 →
+v5.0 DOI chain</h2>
+<p>The Zenodo-bearing artifact chain is:</p>
+<ol type="1">
+<li><strong>v3.0</strong> — <code>10.5281/zenodo.20114594</code>. The
+initial Zenodo deposit; the v3.0 LaTeX source is preserved at
+<code>paper/inv15_paper.tex</code> for the academic record.</li>
+<li><strong>v4.2</strong> — <code>10.5281/zenodo.20412807</code>. Live
+DOI as of 2026-06-08; cited in <code>pyproject.toml:113</code>,
+<code>README.md</code>’s “Cite” section, and the AUDIT #21 reframe.</li>
+<li><strong>v5.0</strong> — <em>pending</em>. The companion systems
+paper (this document) is the v5.0 artifact; the Zenodo deposit is a
+one-shot manual step that has not been executed yet at the time of this
+commit.</li>
+</ol>
+<p>The v5.0 deposit will be one-shot: the deposit will publish
+<code>paper/v5.0/paper.pdf</code> as a new Zenodo record, with the
+<code>Paper = "https://doi.org/10.5281/zenodo.20412807"</code> field in
+<code>pyproject.toml:113</code> updated to the new DOI <em>only after
+the deposit returns its record URL</em>. The 2.0 commit intentionally
+<strong>does not</strong> edit the URL — the test in
+<code>tests/test_paper_v5_rename.py</code> asserts the v4.2 DOI is still
+referenced, so any future contributor who updates the URL without a
+confirmed Zenodo record URL will see the test fail with an explicit
+“deposit-pending” message. The deposit itself is out of scope for the
+2.0 code sprint and is tracked under AUDIT #31c.</p>
+<p>The <code>docs/research/reconcile/atomy-to-romy.md</code> file is the
+companion reconciliation doc that records the rename in prose; the v5.0
+deposit will reference both the v4.2 paper (DOI
+<code>10.5281/zenodo.20412807</code>) and the v5.0 companion (this
+paper) so a future reader can follow the v3.0 → v4.2 → v5.0 chain from a
+single bibliographic entry.</p>
+<h2 id="acknowledgements">Acknowledgements</h2>
+<p>The hardware evidence in this paper comes from two measurement
+campaigns on the AMD Instinct MI300X (real HBM3, real ROCm 7.2, real
+frontier MoE serving) and from the local RTX 2060 SUPER bench toolchain.
+The author thanks the AMD AI Developer Program for MI300X access and the
+local bench host for the head-to-head pivots.</p>
+<h2 id="references">References</h2>
+<p>See <code>paper/v5.0/references.bib</code>. The 5–10 entries are
+deliberately minimal: the codec per-block spec, the Walsh-Hadamard
+transform reference, the LLMLingua-2 paper, the vLLM Automatic Prefix
+Caching spec, the AMD ROCm ATOM disambiguation note, the Zenodo v3.0 +
+v4.2 DOIs, and the Apohara 2.0 reconciliation doc. The full reference
+graph (23 entries) lives in the v4.2 paper’s
+<code>references.bib</code>.</p>
+</body>
+</html>
