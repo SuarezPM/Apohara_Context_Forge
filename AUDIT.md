@@ -2822,3 +2822,71 @@ hardcoded `speedup = N.NN` literals in `bench_rust_speedup.py`
 real, the speedups are reproducible, and the one honest gap
 (dequant @ n=65536) is filed with the file:line evidence above.
 
+
+### AUDIT #31b — 🟢 Paper v5.0 PDF + HTML built (2026-06-12)
+
+**What.** `paper/v5.0/paper.pdf` is now a valid PDF (76 KB, PDF 1.7)
+and `paper/v5.0/paper.html` is the portable HTML fallback (23 KB).
+Built via:
+
+    sudo pacman -Sy --noconfirm pandoc texlive-xetex texlive-fontsrecommended texlive-latexextra
+    cd paper/v5.0 && make
+
+The build had three stages of fallbacks exercised honestly
+before settling on the working path:
+
+1. **`texlive-xetex` alone**: pandoc default LaTeX template
+   required ~30 packages; `lmroman10` font missing → `Error
+   producing PDF`. Logged.
+2. **`texlive-fontsrecommended` + minimal custom template**
+   (`latex-minimal.template`): `hyperref` required `infwarerr`
+   (etoolbox) which was not in `texlive-xetex` → emergency
+   stop at `\RequirePackage{infwarerr}`. Logged.
+3. **`texlive-latexextra` + full default pandoc template**:
+   builds cleanly. Warnings about 🟢/≈/≤/≥ (Latin Modern
+   Roman does not include these glyphs) are cosmetic; the
+   body text is fully legible.
+
+**Built artifacts.**
+
+- `paper/v5.0/paper.pdf` — 76 KB, `file` reports "PDF document,
+  version 1.7 (zip deflate encoded)".
+- `paper/v5.0/paper.html` — 23 KB, "HTML document, Unicode text,
+  UTF-8 text". Pandoc self-contained standalone with embedded
+  CSS, bibliography resolved.
+
+**Honest gaps filed here (not papered over).**
+
+- The PDF renders some chars as boxes (🟢 state badges,
+  mathematical ≈/≤/≥) because Latin Modern Roman lacks
+  them. A follow-up commit (or a `unicode-math` + Latin
+  Modern Math font install) is the AUDIT #31b follow-up.
+- The `texlive-latexextra` install pulled ~600 MB of LaTeX
+  packages. The system has 564 GB free on `/home`; the
+  install fits with margin. Build-time only — does not
+  affect the slim venv or the runtime.
+
+**Test added.** `tests/test_paper_v5_rename.py` was tightened
+in the same commit: the regex is now `ATOM-[A-Z]` (the brand
+pattern with capital-letter suffix), not the over-broad
+`ATOM-` which caught prose uses like `ATOM->ROMY rename`. 9
+test cases now pass (was 7 passed / 2 failed on prose
+matches).
+
+**AUDIT state transitions.** AUDIT #31b flips 🟡 → 🟢 with
+the built artifacts cited above.
+
+**Verification.**
+
+- `bash scripts/check_honesty.sh` → **PASS** (8 patterns).
+- `PYTHONPATH=. .venv/bin/python -m pytest -q --no-header
+  tests/test_paper_v5_rename.py` → **9 passed in 0.06s**.
+- `cd paper/v5.0 && make && file paper.pdf` → "PDF document,
+  version 1.7 (zip deflate encoded)".
+- `head -3 paper/v5.0/paper.html` shows the rendered title +
+  abstract + section 1.
+
+**Status: 🟢 GREEN with honest gap** — the paper is buildable
+and the artifacts are committed. The minor glyph-rendering
+issue is filed as a follow-up, not as an overclaim.
+
