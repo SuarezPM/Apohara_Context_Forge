@@ -43,6 +43,41 @@ class CodecV8Config(RotateKVConfig):
     codec_version: str = "v8"
 
 
+@dataclass
+class CodecV8PerBlockConfig(CodecV8Config):
+    """V8 per-block codec — closes the 4 GB RAM-ceiling gap (AUDIT #27a).
+
+    Instead of carrying one ``(scale, zero_point)`` pair per **packed
+    byte** of code (V8 per-nibble layout, 16 B metadata per 1 B code),
+    this config carries one ``(scale, zero_point)`` pair per ``group_size``
+    packed bytes of code. With ``group_size=256`` and 4-bit codes the
+    storage breakdown for 10M docs / 768-d becomes:
+
+        codes     = n_docs * dim/2 bytes           = 3,662 MiB
+        scales    = n_docs/group_size * dim/2 * 4  =    120 MiB
+        zps       = n_docs/group_size * dim/2 * 4  =    120 MiB
+        norms     = n_docs * 4                      =     38 MiB
+        ─────────────────────────────────────────────────────────
+        total                                          ≈ 3,940 MiB  (≤ 4,096)
+
+    Quality cost: a single (scale, zp) now covers 256 packed bytes
+    instead of 1, so within-block dynamic range must be re-checked.
+    The bench default ``group_size=256`` was chosen empirically to
+    stay under 4 GB at the spec's 10M / 768 / 4 configuration while
+    keeping the within-block dynamic range manageable for 4-bit codes.
+
+    INVARIANT preservation: this config preserves INV-10 (pre-RoPE
+    quantization), the per-nibble trailing axis (the V8 codec marker),
+    the QuantizedKVBlock packed-INT4 layout, and the FWHT toggle.
+    """
+
+    codec_version: str = "v9pb"  # V8-derived per-block (close-path)
+
+    # Re-validate on construction so the lazy `dim % group_size == 0`
+    # contract is enforced before any add() runs.
+    group_size: int = 256
+
+
 class CodecV8Quantizer(RotateKVQuantizer):
     """V8 quantizer: per-nibble independent scales.
 

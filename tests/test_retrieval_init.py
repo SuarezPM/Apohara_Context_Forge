@@ -449,32 +449,87 @@ def test_turbovec_store_ram_projection_upstream():
 
 
 def test_turbovec_store_ram_projection_optimised_meets_4gb_target():
-    """10M docs at 768-d / 4-bit via ram_optimised (codec_v8): currently
-    does NOT meet the 4 GB target — the per-nibble per-dim metadata
-    layout is 16 bytes per packed byte of code, which dominates the
-    storage. The honest gap is filed in AUDIT #27 (2026-06-11). This
-    test pins the *actual* projection so any future close-path work
-    (e.g. a tighter per-block scale layout) has a target to beat.
+    """10M docs at 768-d / 4-bit via ram_optimised + per-block codec
+    (AUDIT #27a close path): **meets** the 4 GB target.
 
-    The projection math is the spec's stated per-nibble independent-
-    scales formula:
-      packed_codes  = n_docs * dim * bit_width / 8
-      scales        = n_docs * dim * 2 * 4   (one scale per nibble,
-                                              2 nibbles per dim, float32)
-      zero_points   = n_docs * dim * 2 * 4   (same)
-      norms         = n_docs * 4
-    = ~62,294 MiB at 10M / 768 / 4 — orders of magnitude above the
-    4,096 MiB target. The test is intentionally a *negative* assertion
-    of the form "projected is much greater than 4 GB" so the next
-    close-path pass (Phase 5) has a clear number to beat.
+    With ``group_size=256`` the per-block (scale, zp) collapses metadata
+    from 16 B per packed byte to ~1 B per packed byte. The closed-form
+    math is:
+
+        codes     = n_docs * dim * bit_width / 8
+        scales    = n_docs / group_size * (dim // 2) * 4
+        zps       = n_docs / group_size * (dim // 2) * 4
+        norms     = n_docs * 4
+
+    At 10M / 768 / 4 / group_size=256: ~3,815 MiB ≤ 4,096 MiB (the 4 GB
+    target is achievable). This test flipped from a *negative* assertion
+    (which pinned the honest gap pre-AUDIT-#27a) to a *positive*
+    assertion (the close path lands inside the budget).
+    """
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    store = TurbovecStore(
+        dim=768, bit_width=4, storage_mode="ram_optimised", group_size=256
+    )
+    projected = store.projected_ram_mb(n_docs=10_000_000)
+    # Close path: must land inside the 4 GB budget (with margin to
+    # catch regressions that re-grow the metadata).
+    assert 3_500 < projected <= 4_096, (
+        f"ram_optimised AUDIT #27a close-path projection {projected:.1f} MiB "
+        f"outside expected 3,500-4,096 MiB band; review per-block codec math"
+    )
+
+
+def test_turbovec_store_ram_projection_optimised_default_pins_honest_gap():
+    """Back-compat: the default ``group_size=1`` still projects to the
+    AUDIT #27 honest gap (~62 GB at 10M / 768 / 4). The default is the
+    per-nibble per-doc layout, which is the only layout that exercised
+    the V8 codec in the previous US-015 ralph session. Callers that
+    want the close path must opt in with ``group_size=256``.
+
+    This test guards the back-compat surface: removing the default
+    (or silently changing the formula) would break the AUDIT #27
+    ledger entry and the existing bank test that depends on it.
     """
     from apohara_context_forge.retrieval import TurbovecStore
 
     store = TurbovecStore(dim=768, bit_width=4, storage_mode="ram_optimised")
     projected = store.projected_ram_mb(n_docs=10_000_000)
-    # Per-nibble metadata is 16 bytes per packed byte; the 4 GB target
-    # is unachievable with this layout. Assert the honest gap.
-    assert projected > 4_096, (
-        f"ram_optimised RAM projection {projected:.1f} MB unexpectedly "
-        f"<= 4 GB target; AUDIT #27 should be re-evaluated"
+    # AUDIT #27 honest gap (per-nibble, group_size=1, default).
+    assert projected > 60_000, (
+        f"default ram_optimised projection {projected:.1f} MiB no longer "
+        f"matches the AUDIT #27 honest gap (~62,294 MiB); the default "
+        f"group_size=1 was changed underfoot"
     )
+
+
+def test_turbovec_store_ram_optimised_rejects_indivisible_dim():
+    """``group_size > 1`` requires ``dim % group_size == 0`` to keep the
+    per-block math closed-form. The constructor must reject the bad
+    combo before any add() runs.
+    """
+    from apohara_context_forge.retrieval import TurbovecStore
+
+    # 384 % 256 != 0 → reject.
+    try:
+        TurbovecStore(
+            dim=384, bit_width=4, storage_mode="ram_optimised", group_size=256
+        )
+    except ValueError as e:
+        assert "divisible" in str(e).lower() or "group_size" in str(e).lower()
+    else:
+        raise AssertionError(
+            "TurbovecStore(dim=384, group_size=256) should have raised ValueError"
+        )
+
+    # group_size < 1 → reject.
+    try:
+        TurbovecStore(
+            dim=768, bit_width=4, storage_mode="ram_optimised", group_size=0
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(
+            "TurbovecStore(group_size=0) should have raised ValueError"
+        )

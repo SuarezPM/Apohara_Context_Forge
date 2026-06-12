@@ -1,0 +1,5 @@
+chunk_size: 16
+local_cpu: false
+max_local_cpu_size: 2.0
+remote_url: "redis://localhost:6379"
+remote_serde: "naive"

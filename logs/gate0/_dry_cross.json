@@ -1,0 +1,222 @@
+{
+  "schema_version": "0.1.0",
+  "timestamp_utc": "2026-06-11T14:30:58Z",
+  "topology": "cross_worker",
+  "conditions": {
+    "model": "qwen3-32b",
+    "hardware_label": "unknown (dry)",
+    "vram_source": "dry",
+    "second_source": null,
+    "topology": "cross_worker",
+    "n_agents": 5,
+    "n_requests": 320,
+    "concurrency": 32,
+    "max_tokens": 64,
+    "approx_prefix_tokens": 517,
+    "shared_prefix_fraction": 1.0,
+    "block_size": 16,
+    "kv_cache_dtype": "auto",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.9,
+    "aiter_applied": true,
+    "pythonhashseed": "0"
+  },
+  "workload": {
+    "name": "sprint5_5agent",
+    "model": "qwen3-32b",
+    "canonical_prefix_hash": "248523bdb03c25ff1d3cbe18ea2c9a82b9c87b5502295beabce1c870579a9e64",
+    "n_requests": 320,
+    "concurrency": 32,
+    "agents": [
+      "retriever",
+      "reranker",
+      "summarizer",
+      "critic",
+      "responder"
+    ]
+  },
+  "reuse": {
+    "canonical_prefix_chars": 2070,
+    "canonical_prefix_hash": "248523bdb03c25ff1d3cbe18ea2c9a82b9c87b5502295beabce1c870579a9e64",
+    "n_requests": 320,
+    "n_distinct_prefixes": 1,
+    "shared_prefix_fraction": 1.0,
+    "approx_prefix_tokens": 517,
+    "note": "char/4 heuristic (no tokenizer wired)"
+  },
+  "arms": {
+    "A": {
+      "arm": "A",
+      "topology": "cross_worker",
+      "kv_footprint": null,
+      "throughput": null,
+      "prefix_metrics": null,
+      "model_weight_gb": null,
+      "server_log_path": "/home/thelinconx/Documentos/Apohara_Context_Forge/logs/gate0/sprint5_5agent_cross_worker_A_w2_server.log",
+      "inv15_fires": 0,
+      "measured": false
+    },
+    "B": {
+      "arm": "B",
+      "topology": "cross_worker",
+      "kv_footprint": null,
+      "throughput": null,
+      "prefix_metrics": null,
+      "model_weight_gb": null,
+      "server_log_path": "/home/thelinconx/Documentos/Apohara_Context_Forge/logs/gate0/sprint5_5agent_cross_worker_B_w2_server.log",
+      "inv15_fires": 64,
+      "measured": false
+    },
+    "C": {
+      "arm": "C",
+      "topology": "cross_worker",
+      "kv_footprint": null,
+      "throughput": null,
+      "prefix_metrics": null,
+      "model_weight_gb": null,
+      "server_log_path": "/home/thelinconx/Documentos/Apohara_Context_Forge/logs/gate0/sprint5_5agent_cross_worker_C_w2_server.log",
+      "inv15_fires": 0,
+      "measured": false
+    }
+  },
+  "validity": {
+    "checks": [
+      {
+        "name": "apc_on",
+        "passed": false,
+        "required": true,
+        "detail": "no APC server logs supplied: APC-ON could not be verified for any arm.",
+        "evidence": {
+          "enable_prefix_caching": null,
+          "found": false
+        }
+      },
+      {
+        "name": "aiter_parity",
+        "passed": true,
+        "required": true,
+        "detail": "AITER env identical across ['A', 'B', 'C'] (aiter_applied=True).",
+        "evidence": {
+          "keys": [
+            "AITER_ENABLE_VSKIP",
+            "NCCL_MIN_NCHANNELS",
+            "VLLM_ROCM_USE_AITER",
+            "VLLM_ROCM_USE_AITER_LINEAR",
+            "VLLM_ROCM_USE_AITER_MHA",
+            "VLLM_ROCM_USE_AITER_MOE",
+            "VLLM_ROCM_USE_AITER_RMSNORM",
+            "VLLM_USE_AITER"
+          ],
+          "per_arm": {
+            "A": {
+              "AITER_ENABLE_VSKIP": "0",
+              "NCCL_MIN_NCHANNELS": "112",
+              "VLLM_ROCM_USE_AITER": "1",
+              "VLLM_ROCM_USE_AITER_LINEAR": "1",
+              "VLLM_ROCM_USE_AITER_MHA": "1",
+              "VLLM_ROCM_USE_AITER_MOE": "1",
+              "VLLM_ROCM_USE_AITER_RMSNORM": "1",
+              "VLLM_USE_AITER": "1"
+            },
+            "B": {
+              "AITER_ENABLE_VSKIP": "0",
+              "NCCL_MIN_NCHANNELS": "112",
+              "VLLM_ROCM_USE_AITER": "1",
+              "VLLM_ROCM_USE_AITER_LINEAR": "1",
+              "VLLM_ROCM_USE_AITER_MHA": "1",
+              "VLLM_ROCM_USE_AITER_MOE": "1",
+              "VLLM_ROCM_USE_AITER_RMSNORM": "1",
+              "VLLM_USE_AITER": "1"
+            },
+            "C": {
+              "AITER_ENABLE_VSKIP": "0",
+              "NCCL_MIN_NCHANNELS": "112",
+              "VLLM_ROCM_USE_AITER": "1",
+              "VLLM_ROCM_USE_AITER_LINEAR": "1",
+              "VLLM_ROCM_USE_AITER_MHA": "1",
+              "VLLM_ROCM_USE_AITER_MOE": "1",
+              "VLLM_ROCM_USE_AITER_RMSNORM": "1",
+              "VLLM_USE_AITER": "1"
+            }
+          },
+          "aiter_applied": {
+            "A": true,
+            "B": true,
+            "C": true
+          },
+          "reference_arm": "A"
+        }
+      },
+      {
+        "name": "seed_pinned",
+        "passed": true,
+        "required": true,
+        "detail": "PYTHONHASHSEED='0' pinned on every arm ['A', 'B', 'C'].",
+        "evidence": {
+          "expected": "0",
+          "per_arm": {
+            "A": "0",
+            "B": "0",
+            "C": "0"
+          },
+          "any_cross_worker": true
+        }
+      },
+      {
+        "name": "shared_prefix_single",
+        "passed": true,
+        "required": true,
+        "detail": "workload collapses to 1 distinct prefix \u2014 shared-prefix assumption holds.",
+        "evidence": {
+          "n_distinct_prefixes": 1,
+          "canonical_prefix_hash": "248523bdb03c25ff1d3cbe18ea2c9a82b9c87b5502295beabce1c870579a9e64",
+          "shared_prefix_fraction": 1.0,
+          "n_requests": 320
+        }
+      },
+      {
+        "name": "c_control_zero",
+        "passed": false,
+        "required": true,
+        "detail": "arm C prefix metrics not supplied: negative control could not be verified.",
+        "evidence": {
+          "hit_rate": null,
+          "found": false
+        }
+      },
+      {
+        "name": "w2_cold_read",
+        "passed": false,
+        "required": true,
+        "detail": "arm B (cross) prefix metrics not supplied: cold worker-2 read could not be verified.",
+        "evidence": {
+          "external_hits_delta": null,
+          "found": false
+        }
+      },
+      {
+        "name": "cross_negative_control",
+        "passed": false,
+        "required": true,
+        "detail": "arm A (cross) prefix metrics not supplied: APC-only cross baseline could not be verified.",
+        "evidence": {
+          "external_hits_delta": null,
+          "found": false
+        }
+      },
+      {
+        "name": "n_requests_sufficient",
+        "passed": true,
+        "required": true,
+        "detail": "n_requests=320 >= floor 200 \u2014 CI can be tight.",
+        "evidence": {
+          "n_requests": 320,
+          "min_requests": 200
+        }
+      }
+    ],
+    "quotable": false,
+    "summary": "NOT quotable \u2014 failed required checks: apc_on, c_control_zero, w2_cold_read, cross_negative_control"
+  },
+  "measured": false
+}

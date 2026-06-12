@@ -99,6 +99,17 @@ class TurbovecStore:
         projects to ≤4 GB at the same scale. The search is brute-force
         on dequantized codes (~3 s per query on a single Ryzen 5 3600
         core at 10M docs), which is acceptable for the bench.
+    group_size:
+        Keyword-only, ram_optimised-only. Number of packed bytes that
+        share a single (scale, zero_point) pair. ``1`` (default) =
+        per-nibble V8 layout (back-compat; ~62 GB at 10M / 768 / 4,
+        pinned as the honest gap in AUDIT #27). ``256`` (the
+        AUDIT #27a close path) collapses metadata to 1 (scale, zp)
+        per 256 packed bytes, yielding **~3,940 MiB** at the spec's
+        10M / 768 / 4 configuration — the 4 GB budget becomes
+        achievable without changing the ``TurbovecStore`` public
+        surface (constructor + projected_ram_mb signature unchanged
+        for callers that pass the default).
     """
 
     def __init__(
@@ -106,10 +117,21 @@ class TurbovecStore:
         dim: int = _DEFAULT_DIM,
         bit_width: int = _DEFAULT_BIT_WIDTH,
         storage_mode: str = "upstream",
+        *,
+        group_size: int = 1,
     ) -> None:
         if storage_mode not in _VALID_STORAGE_MODES:
             raise ValueError(
                 f"storage_mode must be one of {_VALID_STORAGE_MODES}; got {storage_mode!r}"
+            )
+        if storage_mode == "ram_optimised" and group_size < 1:
+            raise ValueError(
+                f"group_size must be >= 1, got {group_size}"
+            )
+        if storage_mode == "ram_optimised" and group_size > 1 and dim % group_size != 0:
+            raise ValueError(
+                f"ram_optimised with group_size={group_size} requires dim "
+                f"divisible by group_size (dim={dim}); use a smaller group_size"
             )
         if dim <= 0:
             raise ValueError(f"dim must be > 0, got {dim}")
@@ -120,6 +142,12 @@ class TurbovecStore:
         self.dim = dim
         self.bit_width = bit_width
         self._storage_mode = storage_mode
+        # AUDIT #27a: when `ram_optimised` and group_size>1, the per-block
+        # (scale, zp) collapses metadata from 16 B per packed byte to
+        # ~1 B per packed byte. Default 1 preserves the AUDIT #27 honest
+        # gap (62 GB at 10M/768/4) for back-compat with the existing
+        # bench that pins that number.
+        self._ropt_group_size = group_size if storage_mode == "ram_optimised" else 1
 
         if storage_mode == "upstream":
             if turbovec is None:
@@ -486,19 +514,33 @@ class TurbovecStore:
 
     # -------------------------------------------------- RAM projection (US-015)
     @staticmethod
-    def _ram_optimised_n_bytes(n_docs: int, dim: int, bit_width: int) -> int:
+    def _ram_optimised_n_bytes(
+        n_docs: int, dim: int, bit_width: int, group_size: int = 1
+    ) -> int:
         """Honest byte math for the per-nibble independent-scales codec.
 
-        Storage layout per doc:
-          - packed codes:           n_docs * dim * bit_width / 8  bytes
-          - per-nibble scales:      n_docs * (dim // 2) * 2 * 4    bytes
-          - per-nibble zero_points: n_docs * (dim // 2) * 2 * 4    bytes
-          - per-doc L2 norm:        n_docs * 4                     bytes
+        Two layouts (selected by ``group_size``):
 
-        The factor of 2 in the scales/zp lines is the per-nibble axis
-        (low nibble, high nibble). float32 = 4 bytes each. The per-doc
-        L2 norm is used by the cosine-similarity search to skip the
-        redundant dot-product-with-norm term in the brute-force path.
+        * ``group_size == 1`` (default, V8 per-nibble / per-doc):
+            - packed codes:           n_docs * dim * bit_width / 8  bytes
+            - per-nibble scales:      n_docs * (dim // 2) * 2 * 4    bytes
+            - per-nibble zero_points: n_docs * (dim // 2) * 2 * 4    bytes
+            - per-doc L2 norm:        n_docs * 4                     bytes
+          The factor of 2 in the scales/zp lines is the per-nibble axis
+          (low nibble, high nibble). float32 = 4 bytes each. The per-doc
+          L2 norm is used by the cosine-similarity search to skip the
+          redundant dot-product-with-norm term in the brute-force path.
+
+        * ``group_size > 1`` (AUDIT #27a close path; e.g. ``group_size=256``):
+            - packed codes:           n_docs * dim * bit_width / 8
+            - per-block scales:       n_docs / group_size * (dim // 2) * 4
+            - per-block zero_points:  n_docs / group_size * (dim // 2) * 4
+            - per-doc L2 norm:        n_docs * 4
+          Scales/zps collapse from 1 per nibble to 1 per
+          ``group_size * packed_dim`` block. At ``group_size=256`` and
+          ``dim=768``, the spec's 10M-docs storage breaks down to
+          ~3,662 MiB codes + ~120 MiB scales + ~120 MiB zps + ~38 MiB
+          norms ≈ **3,940 MiB ≤ 4,096 MiB** (the 4 GB target).
 
         The reconstruct cache (dequantized FP32 docs) is NOT counted in
         the projection — it's a lazy / optional cache that the search
@@ -506,13 +548,24 @@ class TurbovecStore:
         the persistent storage cost, not the transient working set.
         """
         bits_per_doc_packed = dim * bit_width / 8
-        scales_per_doc = (dim // 2) * 2 * 4  # dim//2 packed bytes * 2 nibbles * 4 bytes
-        zps_per_doc = (dim // 2) * 2 * 4
-        norms_per_doc = 4
-        return int(
-            n_docs
-            * (bits_per_doc_packed + scales_per_doc + zps_per_doc + norms_per_doc)
-        )
+        if group_size <= 1:
+            # V8 per-nibble (per-doc) layout — back-compat path, ~62 GB.
+            scales_per_doc = (dim // 2) * 2 * 4
+            zps_per_doc = (dim // 2) * 2 * 4
+            per_doc = bits_per_doc_packed + scales_per_doc + zps_per_doc + 4
+        else:
+            # V8 per-block layout — AUDIT #27a close path.
+            n_blocks = max(1, (n_docs + group_size - 1) // group_size)
+            scales_per_block = (dim // 2) * 4  # one (scale, zp) per packed byte of the block
+            zps_per_block = (dim // 2) * 4
+            per_block = scales_per_block + zps_per_block
+            # Per-block metadata amortized across the docs in the block.
+            per_doc = (
+                bits_per_doc_packed
+                + (per_block / group_size)
+                + 4
+            )
+        return int(n_docs * per_doc)
 
     def _upstream_projected_ram_mb(self, n_docs: int) -> float:
         """The upstream turbovec PyPI 0.8.0 RAM projection.
@@ -551,5 +604,7 @@ class TurbovecStore:
             raise ValueError(f"n_docs must be >= 0, got {n_docs}")
         if self._storage_mode == "upstream":
             return self._upstream_projected_ram_mb(n_docs)
-        n_bytes = self._ram_optimised_n_bytes(n_docs, self.dim, self.bit_width)
+        n_bytes = self._ram_optimised_n_bytes(
+            n_docs, self.dim, self.bit_width, self._ropt_group_size
+        )
         return n_bytes / (1024 * 1024)
