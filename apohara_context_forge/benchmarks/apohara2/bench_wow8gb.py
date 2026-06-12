@@ -58,6 +58,20 @@ from apohara_context_forge.serving.vram_monitor import VRAMMonitor
 logger = logging.getLogger("bench_wow8gb")
 
 
+class _Wow8gbNoRealModelLoad(RuntimeError):
+    """Sentinel exception: the bench's tokens_per_sec blew up past
+    1e6, which is physically impossible. The caller's
+    try/except catches this and tags the row as
+    ``skipped: no-real-model-load`` (not ``error: ...``) — the
+    difference matters: ``skipped`` means "we did not measure"
+    (the model was not loaded), ``error`` means "we tried and
+    it failed" (a real exception). Both are honest, but
+    ``skipped`` is the right tag for the no-model-load case.
+
+    AUDIT #30 fix (2026-06-12).
+    """
+
+
 # ---------------------------------------------------------------------------
 # Honest-stub sentinels
 # ---------------------------------------------------------------------------
@@ -220,6 +234,22 @@ def _measure_run(
     if elapsed <= 0.0:
         elapsed = 1e-9
     tokens_per_sec = float(n_new_tokens) / elapsed
+    # HONEST STUB GUARD (AUDIT #30 fix, 2026-06-12): when the bench
+    # is invoked without a real model load (e.g. a dry-run probe or
+    # a no-op timer), `elapsed` is ~0 and `tokens_per_sec` blows up
+    # to ~10^7 — a physically impossible number that the
+    # status=ok tag would smuggle into the table as a real
+    # measurement. Raise a sentinel exception; the caller's
+    # try/except catches it and tags the row as `skipped: ...`
+    # (the more honest "we did not measure" status, not the
+    # `error: ...` that the bare RuntimeError text suggests).
+    if tokens_per_sec > 1.0e6:
+        raise _Wow8gbNoRealModelLoad(
+            f"tokens_per_sec={tokens_per_sec:.2e} > 1e6 is physically "
+            f"impossible; the bench did not run a real model generate. "
+            f"Use the bench with a real model load (slim venv + "
+            f"transformers + local HF cache) or with --dry-run."
+        )
     # ΔPPL — honest stub when no LM is wired in. The bench surfaces
     # this as an empty cell.
     ppl_delta = _real_downstream_ppl(prompt, "")
@@ -308,6 +338,19 @@ def run_condition(
             tokens_per_sec=float(tokens_per_sec),
             ppl_delta=float(ppl_delta),
             status="ok",
+            vram_source=mon.vram_source(),
+            notes=notes,
+        )
+    except _Wow8gbNoRealModelLoad as e:
+        notes.append(f"skipped: {e}")
+        return BenchRow(
+            id=condition["id"],
+            label=condition["label"],
+            model=condition["model"],
+            vram_peak_gb=float("nan"),
+            tokens_per_sec=float("nan"),
+            ppl_delta=float("nan"),
+            status="skipped: no-real-model-load",
             vram_source=mon.vram_source(),
             notes=notes,
         )

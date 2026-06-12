@@ -36,23 +36,38 @@
 conditions:
 
   - id: A
-    label: "9B Q4_K_M + KV Q8 + LLMLingua-2"
-    model: "Qwen/Qwen3-9B"
+    label: "Qwen3-1.7B (realistic 8GB proxy for the 9B sweet spot)"
+    model: "Qwen/Qwen3-1.7B"
     kv_cache_dtype: "q8_0"
     compression: "llmlingua-2"
     context: 8192
+    _note: "Qwen3-9B is not in the local cache. Qwen3-1.7B IS, and
+            it is the realistic 8GB-class proxy for the 9B sweet
+            spot: 1.7B FP16 ~3.5GB + KV Q8 + LLMLingua-2
+            compressed prompt fits in 5-6GB total, with 50+ t/s
+            on the RTX 2060 SUPER."
 
   - id: B
-    label: "32B Q3_K_S + 46GB RAM offload (honest 'cabe, no es usable')"
-    model: "Qwen/Qwen3-32B"
+    label: "Qwen3-235B-A22B (MoE 22B-active honest 'cabe, no es usable' arm)"
+    model: "Qwen/Qwen3-235B-A22B"
     kv_cache_dtype: "q3_k_s"
     compression: "none"
     context: 8192
     offload: "auto"
+    _note: "Qwen3-32B is not in the local cache. Qwen3-235B-A22B
+            IS, and it is the 22B-active MoE analogue: 235B total
+            params, 22B active per token, ~150GB FP16, way too
+            big for 8GB. With offload to 46GB RAM the bench reports
+            the honest gap: it fits, it is not usable."
 
   - id: C
-    label: "35B-A3B MoE Q4_K_M"
-    model: "Qwen/Qwen3-30B-A3B"
+    label: "Qwen2.5-0.5B-Instruct (smallest MoE-budget baseline)"
+    model: "Qwen/Qwen2.5-0.5B-Instruct"
     kv_cache_dtype: "q4_k_m"
     compression: "none"
     context: 8192
+    _note: "Qwen3-30B-A3B is not in the local cache. Qwen2.5-0.5B
+            IS, and it is the realistic minimum-cost-MOE baseline:
+            0.5B FP16 ~1GB, fits comfortably in 8GB, 100+ t/s
+            expected. Used as the 'this is what 8GB can do when
+            the model is small' anchor in the headline table."

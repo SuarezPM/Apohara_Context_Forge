@@ -2,47 +2,47 @@
   "bench": "bench_wow8gb",
   "audit": "#30",
   "hardware_hint": "RTX 2060 SUPER 8GB",
-  "n_runs": 3,
-  "dry_run": true,
-  "vram_source": "cuda_torch_reserved",
+  "n_runs": 1,
+  "dry_run": false,
+  "vram_source": "cuda_pynvml",
   "rows": [
     {
       "id": "A",
-      "label": "9B Q4_K_M + KV Q8 + LLMLingua-2",
-      "model": "Qwen/Qwen3-9B",
+      "label": "Qwen3-1.7B (realistic 8GB proxy for the 9B sweet spot)",
+      "model": "Qwen/Qwen3-1.7B",
       "vram_peak_gb": NaN,
       "tokens_per_sec": NaN,
       "ppl_delta": NaN,
-      "status": "dry-run",
-      "vram_source": "cuda_torch_reserved",
+      "status": "skipped: no-real-model-load",
+      "vram_source": "cuda_pynvml",
       "notes": [
-        "--dry-run: no measurement performed"
+        "skipped: tokens_per_sec=5.52e+07 > 1e6 is physically impossible; the bench did not run a real model generate. Use the bench with a real model load (slim venv + transformers + local HF cache) or with --dry-run."
       ]
     },
     {
       "id": "B",
-      "label": "32B Q3_K_S + 46GB RAM offload (honest 'cabe, no es usable')",
-      "model": "Qwen/Qwen3-32B",
+      "label": "Qwen3-235B-A22B (MoE 22B-active honest 'cabe, no es usable' arm)",
+      "model": "Qwen/Qwen3-235B-A22B",
       "vram_peak_gb": NaN,
       "tokens_per_sec": NaN,
       "ppl_delta": NaN,
-      "status": "dry-run",
-      "vram_source": "cuda_torch_reserved",
+      "status": "skipped: no-real-model-load",
+      "vram_source": "cuda_pynvml",
       "notes": [
-        "--dry-run: no measurement performed"
+        "skipped: tokens_per_sec=6.64e+07 > 1e6 is physically impossible; the bench did not run a real model generate. Use the bench with a real model load (slim venv + transformers + local HF cache) or with --dry-run."
       ]
     },
     {
       "id": "C",
-      "label": "35B-A3B MoE Q4_K_M",
-      "model": "Qwen/Qwen3-30B-A3B",
+      "label": "Qwen2.5-0.5B-Instruct (smallest MoE-budget baseline)",
+      "model": "Qwen/Qwen2.5-0.5B-Instruct",
       "vram_peak_gb": NaN,
       "tokens_per_sec": NaN,
       "ppl_delta": NaN,
-      "status": "dry-run",
-      "vram_source": "cuda_torch_reserved",
+      "status": "skipped: no-real-model-load",
+      "vram_source": "cuda_pynvml",
       "notes": [
-        "--dry-run: no measurement performed"
+        "skipped: tokens_per_sec=8.38e+07 > 1e6 is physically impossible; the bench did not run a real model generate. Use the bench with a real model load (slim venv + transformers + local HF cache) or with --dry-run."
       ]
     }
   ]

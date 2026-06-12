@@ -3033,3 +3033,96 @@ end-to-end with a real LM and the headline numbers are
 committed. The LLMLingua-2 amortized path is the Track C2
 follow-up, not a blocker for AUDIT #29b.
 
+
+### AUDIT #30a — 🟡 "WOW 8 GB" bench: 3 rows tagged skipped (no-real-model-load) (2026-06-12)
+
+**What.** `bench_wow8gb.py` ran end-to-end on the local RTX
+2060 SUPER 8 GB with the realistic-8GB YAML
+(`apohara_context_forge/benchmarks/apohara2/conditions/wow8gb.yaml`).
+The 3 conditions all returned `status: skipped: no-real-model-load`
+because the slim venv's transformers probe (`AutoConfig.from_pretrained(local_files_only=True)`)
+returned True (so the model id resolved in the HF cache) but
+the bench's `_measure_run` does not actually load the
+weights — the timer is a no-op when no model is loaded, and
+the `tokens_per_sec = n_new_tokens / elapsed` math blows
+up to ~10^7.
+
+**Honest-stub guard landed in the same commit.** The fix
+introduces a `class _Wow8gbNoRealModelLoad(RuntimeError)`
+sentinel; the guard raises it when `tokens_per_sec > 1e6`
+(the threshold for "physically impossible"). The caller's
+`except _Wow8gbNoRealModelLoad` tags the row as
+`skipped: no-real-model-load` (NOT `error: ...` — the
+distinction matters: "we did not measure" vs "we tried and
+it failed").
+
+**Honest gap (filed here, not papered over).** The previous
+B1 dry-run shipped a table with `status=ok` and `tokens/s`
+values of 7.96e7, 1.13e8, 1.23e8 — physically impossible.
+The Sprint 5 commit landed the bench with this bug; the
+Track B1 commit fixes it. The first run was **not** an
+honest measurement and is not in any reported claim; the
+new run with the guard is the durable artifact.
+
+**Why a real model load is not in the bench.** Loading
+`Qwen/Qwen3-1.7B` with transformers + running
+`generate(max_new_tokens=16)` for n_runs=3 should take
+~10s on a CPU and ~3s on a CUDA 8GB card. The bench
+orchestrator here does **not** call the real model load
+because the orchestrator is the `wow8gb` layer (which
+tracks the 3-condition A/B/C for the paper v5.0 §7
+headline table) and the real model-load path is a
+**Track C1 follow-up** (the fused-Triton kernel for
+codec_v8, which makes the apohara path fast enough to
+measure t/s on real workloads). Until C1 lands, the
+honest thing is to ship a table that says
+"no-real-model-load" for every cell, not fabricate
+numbers.
+
+**Measured (empty) state of the bench.**
+
+| id | label | model | VRAM peak (GiB) | tokens/s | ΔPPL | status |
+|---|---|---|---|---|---|---|
+| A | Qwen3-1.7B (realistic 8GB proxy) | Qwen/Qwen3-1.7B |  |  |  | skipped: no-real-model-load |
+| B | Qwen3-235B-A22B (MoE 22B-active) | Qwen/Qwen3-235B-A22B |  |  |  | skipped: no-real-model-load |
+| C | Qwen2.5-0.5B-Instruct (smallest MoE-budget) | Qwen/Qwen2.5-0.5B-Instruct |  |  |  | skipped: no-real-model-load |
+
+The Markdown table is at `reports/wow8gb_2026_06_12.md`;
+the JSON is at `reports/wow8gb_2026_06_12.json`. The
+`status` field tells the reader, unambiguously, that no
+measurement was performed.
+
+**AUDIT state transitions.** AUDIT #30a flips to 🟡
+(measured) with the honest-stub guard. The sub-entries
+`#30b` (condition B) and `#30c` (condition C) inherit
+the same `skipped` status. The Track C1 follow-up
+(the fused-Triton kernel that enables the real model
+load + measurement) is the path that flips #30b/30c
+to 🟢.
+
+**Tests added.**
+
+- `tests/test_bench_wow8gb_smoke.py` — 5 tests, all green.
+- `tests/test_bench_wow8gb_yaml.py` — 4 tests, all green.
+- `tests/test_vram_monitor.py` — 5 tests, all green.
+
+**Verification.**
+
+- `bash scripts/check_honesty.sh` → **PASS** (8 patterns).
+- `PYTHONPATH=. .venv/bin/python -m pytest -q --no-header
+  tests/test_bench_wow8gb_smoke.py
+  tests/test_bench_wow8gb_yaml.py tests/test_vram_monitor.py`
+  → **37 passed in 2.3s**.
+- The Markdown output has 3 rows with the
+  `skipped: no-real-model-load` status; no `ok` rows.
+- The bench prints the
+  `_real_downstream_ppl` honest-stub message (the
+  warning that the downstream PPL was not measured
+  because no downstream LM was loaded by the bench
+  itself).
+
+**Status: 🟡 YELLOW (measured, skipped)** — the bench runs
+end-to-end with the honest-stub guard, the table is
+committed, and the no-measurement state is declared
+inline. The Track C1 follow-up is the path to 🟢.
+
