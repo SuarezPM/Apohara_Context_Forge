@@ -40,12 +40,22 @@ def _rust_available() -> bool:
 
 
 def _import_rust_kv():
-    """Import the Rust symbols lazily, raising a clear error on miss."""
+    """Import the Rust symbols lazily, raising a clear error on miss.
+
+    The wheel's PyO3 module exports the Lloyd-Max helpers as
+    ``encode_kv_py`` and ``decode_kv_py`` (the ``_py`` suffix
+    distinguishes the bound surface from the legacy
+    ``encode_kv`` / ``decode_kv`` symbols on the ``centroids``
+    re-export). The Sprint 2 / AUDIT #320a close path aliases
+    them to the V6.1 ``encode_kv`` / ``decode_kv`` names so
+    legacy callers (and the test suite) keep working without
+    a code churn pass.
+    """
     if not _rust_available():
         raise ImportError(_RUST_NOT_BUILT_MSG)
     from apohara_context_forge.serving.turboquant_turing import (
-        decode_kv as _rust_decode_kv,
-        encode_kv as _rust_encode_kv,
+        decode_kv_py as _rust_decode_kv,
+        encode_kv_py as _rust_encode_kv,
     )
     return _rust_encode_kv, _rust_decode_kv
 
@@ -59,6 +69,16 @@ _RUST_NOT_BUILT_MSG = (
     "bash build.sh` (chains `cargo test --release && maturin "
     "develop --release`) to build it."
 )
+
+
+# Back-compat alias: ``tests/test_turboquant_kv_shim.py`` and
+# downstream callers still reference the static ``_RUST_AVAILABLE``
+# flag from the V6.1 module. The Sprint 2 / AUDIT #320a flip to
+# a live ``importlib.util.find_spec`` check is the source of
+# truth, but the boolean alias keeps the legacy import surface
+# working without code churn. New code should use the
+# :func:`_rust_available` helper instead.
+_RUST_AVAILABLE = _rust_available()
 
 
 class TurboQuantKVShim:

@@ -194,13 +194,27 @@ def fwht(x, *, fp32_upcast: bool = False, allow_rust: bool = True):
 
     if rust_impl == "rust":
         try:
-            # Flatten all leading dims into a 1-D view of the last
-            # axis. The Rust kernel operates on a contiguous 1-D f32
-            # buffer. We reshape back after the call.
-            flat = arr.reshape(-1).astype(_np.float32, copy=False)
-            _fwht_butterfly_rust_inplace(flat)
-            arr = flat.reshape(arr.shape).astype(orig_dtype, copy=False)
-            arr = arr / _np.sqrt(d_pad)
+            # The Rust kernel is a 1-D butterfly on a contiguous
+            # f32 buffer. Apply it row-wise along the last dim so
+            # the multi-dimensional numpy / torch semantics are
+            # preserved (the legacy ``_fwht_butterfly_numpy`` walks
+            # the last dim with the same axis parameter the numpy
+            # ``reshape`` exposes). We re-use a single 1-D f32
+            # scratch buffer per row to avoid allocating one per
+            # leading slice.
+            scratch = _np.empty(d_pad, dtype=_np.float32)
+            flat = arr.reshape(-1, d_pad)
+            for i in range(flat.shape[0]):
+                scratch[:] = flat[i].astype(_np.float32, copy=False)
+                _fwht_butterfly_rust_inplace(scratch)
+                flat[i] = scratch.astype(orig_dtype, copy=False)
+            # Cast the divisor to the same dtype as ``arr`` so the
+            # division stays in the input dtype. Dividing a float32
+            # array by a Python ``float`` (np.sqrt returns float64)
+            # promotes the result to float64 — the legacy torch /
+            # numpy paths use ``x.mul_(1.0 / sqrt(d))`` / ``arr /=
+            # sqrt(d)`` which preserves the dtype.
+            arr = arr / arr.dtype.type(_np.sqrt(d_pad))
             return arr
         except (ImportError, RuntimeError, ValueError):
             # Fall back to numpy if the wheel is broken or the buffer

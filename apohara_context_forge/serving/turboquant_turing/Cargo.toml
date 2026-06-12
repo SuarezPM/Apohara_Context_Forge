@@ -17,6 +17,15 @@ default = ["compute_75"]
 compute_75 = []
 compute_80 = []
 compute_90 = []
+# Opt-in feature for the end-to-end Python binding test. The
+# default ``cargo test`` invocation does not enable it (the test
+# requires a Python interpreter discoverable at link time, which
+# cargo does not provide; ``build.sh`` enables it via
+# ``cargo test --features python-bindings-test`` after maturin
+# has staged the wheel). With the feature OFF, the test bodies
+# are gated by ``#[cfg(feature = "python-bindings-test")]`` so
+# the linker drops the import surface.
+python-bindings-test = []
 
 [dependencies]
 # Sprint 2 / AUDIT #320a: PyO3 binding for the in-tree Python wheel
@@ -29,6 +38,14 @@ pyo3 = { version = "0.22", features = ["extension-module"] }
 numpy = "0.22"
 
 [dev-dependencies]
-# Used by `tests/python_bindings.rs` to spin up a Python interpreter
-# in-process and exercise the wheel end-to-end.
-pyo3 = { version = "0.22", features = ["auto-initialize"] }
+# Used by `tests/python_bindings.rs` (gated by the
+# ``python-bindings-test`` feature) to spin up a Python interpreter
+# in-process and exercise the wheel end-to-end. The "abi3-py310"
+# feature pins the limited API at Python 3.10 (the lowest version
+# the wheel targets); newer interpreters (3.11 / 3.12 / 3.13 / 3.14)
+# honour the abi3 forward-compat flag. The pyo3 dep is unconditional;
+# when the ``python-bindings-test`` feature is OFF the integration
+# test file's content is gated by ``#[cfg(feature =
+# "python-bindings-test")]`` so the import is dead code and the
+# linker drops it.
+pyo3 = { version = "0.22", features = ["abi3-py310", "auto-initialize"] }
