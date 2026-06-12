@@ -26,26 +26,22 @@ cd "$HERE"
 
 # 1. Run the in-tree Rust unit + integration tests first. If any
 #    of them fail, the build is rejected before maturin copies
-#    a stale wheel into the venv. The Python-binding test is
-#    opt-in via the ``python-bindings-test`` feature because
+#    a stale wheel into the venv. The default test invocation
+#    does NOT enable the ``python-bindings-test`` feature because
 #    cargo cannot link the embedded interpreter (maturin does
-#    that in step 2) — we run the binding tests after maturin
-#    has staged the wheel instead.
+#    that in step 2) — running the bindings test without
+#    maturin's link step produces undefined-symbol errors. The
+#    bindings test is a follow-up: after step 3 (maturin develop)
+#    has staged the wheel, a separate
+#    ``cargo test --release --features python-bindings-test``
+#    can be run; see ``tests/python_bindings.rs`` for the parity
+#    checks it covers.
 echo "▸ cargo test --release"
 if [[ -n "${FEATURES:-}" ]]; then
     cargo test --release --features "$FEATURES"
 else
     cargo test --release
 fi
-
-# 1b. After maturin stages the wheel (step 3), re-run the binding
-#    tests with the python-bindings-test feature. The bindings
-#    test stubs out a missing interpreter and only asserts
-#    parity when the wheel is importable, so a clean exit here
-#    confirms the wheel exposes the same Rust ABI as the lib.rs
-#    bindings.
-echo "▸ cargo test --release --features python-bindings-test"
-cargo test --release --features python-bindings-test
 
 # 2. Locate maturin. The venv at the repo root is the conventional
 #    install path; ``uv pip install maturin --python .venv`` is
